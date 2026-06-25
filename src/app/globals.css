@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+/*
+  ChairMatch design tokens.
+  Palette/type system carried over from the product spec:
+  warm off-white base, deep teal-charcoal ink, muted teal accent,
+  coral reserved for unlock/upgrade moments only, gold for the
+  qualitative pull-quote accent. Fraunces for display/serif headlines,
+  Inter for body and UI.
+*/
+
+:root {
+  /* Surfaces */
+  --color-bg: #FAFAF7;
+  --color-bg-raised: #FFFFFF;
+  --color-line: #E9E5D9;
+  --color-line-soft: #F1EEE3;
+
+  /* Ink */
+  --color-ink: #1A2E2B;
+  --color-ink-soft: #5C6E6A;
+  --color-ink-faint: #8A9C98;
+
+  /* Brand */
+  --color-teal: #3D7A6E;
+  --color-teal-deep: #2C5A50;
+  --color-teal-tint: #E4EFEB;
+
+  /* Reserved for unlock / upgrade / urgency moments ONLY.
+     Do not use coral for routine UI -- it loses its signal value if overused. */
+  --color-coral: #E8603C;
+  --color-coral-deep: #D14F2E;
+
+  /* Qualitative-content accent (pull-quotes, differentiator fields) */
+  --color-gold: #C9A24B;
+
+  --radius-card: 16px;
+  --radius-control: 10px;
+}
+
+@theme inline {
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-ink);
+
+  --color-bg: var(--color-bg);
+  --color-bg-raised: var(--color-bg-raised);
+  --color-line: var(--color-line);
+  --color-line-soft: var(--color-line-soft);
+
+  --color-ink: var(--color-ink);
+  --color-ink-soft: var(--color-ink-soft);
+  --color-ink-faint: var(--color-ink-faint);
+
+  --color-teal: var(--color-teal);
+  --color-teal-deep: var(--color-teal-deep);
+  --color-teal-tint: var(--color-teal-tint);
+
+  --color-coral: var(--color-coral);
+  --color-coral-deep: var(--color-coral-deep);
+
+  --color-gold: var(--color-gold);
+
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-fraunces);
+
+  --radius-card: var(--radius-card);
+  --radius-control: var(--radius-control);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Frosted-glass blur for locked/anonymous candidate avatars and names.
+   This is a brand moment, not a loading placeholder -- it should look
+   like real detail is genuinely behind the glass. */
+.locked-blur {
+  filter: blur(8px);
+  user-select: none;
+}
+
+.locked-text {
+  color: transparent;
+  text-shadow: 0 0 9px rgba(26, 46, 43, 0.5);
+  user-select: none;
+}
