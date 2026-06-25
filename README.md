@@ -18,17 +18,58 @@ This is a real, building, type-checked Next.js app — not a mockup. What exists
 - **TypeScript domain types** matching the schema (`src/types/database.ts`).
 - **Supabase client setup** for browser, server, and service-role contexts, plus middleware for session refresh and route gating (`src/lib/supabase/`, `src/middleware.ts`).
 - **The core paywall logic, for real**: `src/app/api/search/route.ts` performs the free-vs-paid blur/redaction of candidate name and photo *server-side*, based on the practice's actual `subscription_tier` in the database — not a CSS trick that could be inspected away in dev tools.
-- **One working page**: `/owner/browse` rendering the `CandidateCard` component, which handles both unlocked and locked (blurred) states.
+- **The owner dashboard shell and browse page** (`/owner/browse`) — a live-feeling stat hero (real elapsed-time "updated Xm ago" label, pulse indicator), tabs, filter toolbar, and the `CandidateCard` component handling both locked and unlocked states. All functional icons are real SVG (`lucide-react`), not emoji.
+- **Fixed responsive layout** (`src/app/owner/layout.tsx`) — a proper fixed-width desktop sidebar (upgrade card pinned to the bottom via flex, no dead vertical space), a fixed mobile top bar, and a fixed mobile bottom nav, built once as a shared shell.
+- **Expanded role/software/dealbreaker taxonomy** (`src/lib/constants.ts`, mirrored in the schema seed data) — now includes Dentist/Practice Owner, Associate Dentist, Lab Tech, Sterilization Tech as primary roles, and 10 practice management systems instead of 3.
+- **Candidate onboarding flow** (`/candidate/onboarding`) — a 7-step guided wizard: role + alias tags, location/availability, comp/experience/software, the qualitative section (with AI writing assist), dealbreakers, visibility, done.
+- **Owner onboarding flow** (`/owner/onboarding`) — a 4-step wizard: practice basics, software, the mandatory culture disclosure (with AI writing assist), done.
+- **AI writing assist** (`src/components/shared/ai-writing-assist.tsx` + `src/app/api/ai/onboarding-assist/route.ts`) — a chat-style helper embedded in every open-ended field. It asks a sharpening follow-up question or proposes editable draft wording; it never silently auto-fills the field, since the qualitative answers are the actual product and need to be the person's real voice.
+- **AI provider abstraction** (`src/lib/ai/provider.ts`) — wired to GitHub Models (free, Azure-hosted GPT-4o-mini) for early development. Swapping to Anthropic/OpenAI/Gemini later is a one-file change — see the comment at the top of that file.
 
 ## What's NOT built yet (by design — this is the real starting point, not a finished product)
 
-- Auth flows (login/signup pages exist as empty route folders)
-- Onboarding flows (candidate and owner) — folders scaffolded, no implementation
+- Auth flows (login/signup pages exist as empty route folders) — onboarding currently runs without a logged-in session; wiring it to actually create the account and write to Supabase is the next step
 - Stripe integration (route folders scaffolded, no implementation)
-- AI search/outreach/advisor/screening (route folders scaffolded, no implementation)
+- AI search/outreach/advisor/screening beyond the onboarding-assist use case (route folders scaffolded, no implementation)
 - Seed data — the schema is ready, but `supabase/seed/` is empty
+- Candidate-side dashboard, owner dashboard density stats wired to real data, messaging, candidate detail page
 
 This matches Phase 1 of the build document: get the manual, non-AI marketplace loop working end-to-end first.
+
+---
+
+---
+
+## Local dev vs. GitHub vs. Vercel — what to actually do
+
+These are three separate, complementary things, not alternatives to each other:
+
+1. **Local dev** (`npm run dev`) is where you write and test code on your own machine before anyone else sees it. Always do this first for anything new.
+2. **GitHub** is just storage + history for your code -- it doesn't run anything by itself. You push your code there so it's backed up and so Vercel can see it.
+3. **Vercel** is what actually hosts the live, public version of the app. It watches your GitHub repo and auto-rebuilds/deploys every time you push.
+
+**The actual sequence, start to finish:**
+
+1. This zip is already a git repo (`git log` will show one commit). Create a new empty repository on GitHub (don't initialize it with a README -- this repo already has one), then:
+   ```bash
+   cd chairmatch-app
+   git remote add origin https://github.com/<your-username>/chairmatch.git
+   git branch -M main
+   git push -u origin main
+   ```
+2. Go to vercel.com, sign in with your GitHub account, click "Add New Project," and import the `chairmatch` repo you just pushed.
+3. Before clicking Deploy, add your environment variables (everything in `.env.example`) in Vercel's project settings under Environment Variables -- Vercel won't have your `.env.local` file since that file is gitignored on purpose (it contains secrets and should never be committed).
+4. Click Deploy. Vercel gives you a live URL (something like `chairmatch.vercel.app`) within a couple of minutes.
+5. From now on: every time you `git push` to `main`, Vercel automatically redeploys. You don't manually deploy again -- push is the deploy trigger.
+
+**Day-to-day workflow once this is set up:**
+- Make changes locally, check them with `npm run dev` at `localhost:3000`.
+- When happy: `git add -A && git commit -m "what you changed" && git push`.
+- Vercel rebuilds automatically; check the live URL in ~1-2 minutes.
+
+**You do not need Vercel to test locally.** Local (`npm run dev`) works completely independently -- Vercel is only for making it publicly accessible/live. Push when you actually want a shareable live link or are ready to start using it for real, not before every small change.
+
+**One thing to set up either way before deploying:** your Supabase project needs to exist and have the schema pushed (see "Set up Supabase" below) regardless of whether you're running locally or on Vercel -- both environments talk to the same live Supabase database via the URL/keys in your env vars.
 
 ---
 
@@ -143,13 +184,24 @@ If you see a build error fetching fonts from fonts.googleapis.com, that's a netw
 
 Recommended order (matches the build document's Phase 1):
 
-1. **Auth + the owner/candidate fork** -- `(auth)/signup` page with the two-button choice, wired to Supabase Auth, writing `account_type` to the `profiles` table.
-2. **Candidate onboarding** -- the guided multi-step flow (logistics -> comp -> work history -> education -> the qualitative section -> dealbreakers -> relocation/visibility -> notifications), writing into `candidate_profiles` and its related tables.
-3. **Owner onboarding** -- practice profile + the mandatory culture disclosure step.
-4. **Seed data** -- a `supabase/seed/seed.sql` with ~30-50 realistic candidate profiles across roles, so `/owner/browse` can run against real data instead of the static sample array.
-5. **Wire `/owner/browse` to `/api/search`** for real, with the filter rail/bottom-sheet UI from the earlier design pass.
-6. **Owner dashboard** -- the density stat hero and saved searches.
-7. **Candidate detail page** + **messaging**.
-8. **Stripe** -- Standard/Pro subscription checkout and the webhook handler that updates `subscription_tier`.
+1. **Auth + the owner/candidate fork** -- `(auth)/signup` page with the two-button choice, wired to Supabase Auth, writing `account_type` to the `profiles` table. The onboarding wizards built in this pass (`/candidate/onboarding`, `/owner/onboarding`) currently run as standalone UI with local component state only -- they don't yet create an account or write anything to Supabase. Wiring their final "submit" step to actually insert into `candidate_profiles` / `practice_profiles` is the natural next task once auth exists.
+2. **Seed data** -- a `supabase/seed/seed.sql` with ~30-50 realistic candidate profiles across roles, so `/owner/browse` can run against real data instead of the static sample array.
+3. **Wire `/owner/browse` to `/api/search`** for real, with the filter bottom-sheet UI from the earlier design pass (the filter rail itself still needs building -- currently only the "Filters" button and a static quick-filter row exist).
+4. **Owner dashboard** -- saved searches with real new-match counts (the stat hero itself is built and wired for live data, just needs a real query behind it).
+5. **Candidate detail page** + **messaging**.
+6. **Candidate-side dashboard** -- profile views, status toggle.
+7. **Stripe** -- Standard/Pro subscription checkout and the webhook handler that updates `subscription_tier`.
 
-Phase 2 (AI layer) and Phase 3 (retention/expansion) are detailed in the build document and shouldn't be started until Phase 1 is live in the first launch metro.
+Phase 2 (AI search/outreach/advisor/screening beyond onboarding-assist) and Phase 3 (retention/expansion) are detailed in the build document and shouldn't be started until Phase 1 is live in the first launch metro.
+
+## AI writing assist -- setup and a note on GitHub Models
+
+The onboarding writing-helper (the "Stuck? Get help writing this" button on every qualitative field) calls `/api/ai/onboarding-assist`, which by default routes through **GitHub Models** -- a free, Azure-hosted endpoint for testing against GPT-4o-mini and other models without a paid API key.
+
+To use it:
+1. Get a token: GitHub -> Settings -> Developer settings -> Personal access tokens -> generate one with `models: read` permission (or grab a key directly from a model page at github.com/marketplace/models).
+2. Add it to `.env.local` as `GITHUB_MODELS_TOKEN`.
+3. That's it -- `AI_PROVIDER=github_models` is already the default in `.env.example`.
+
+**Known limitation to plan around:** GitHub Models' free tier has real rate limits (low requests-per-minute, meant for testing/prototyping, not production traffic). This is fine for development and even for an early soft-launch with modest volume, but once there's real onboarding traffic in a launch metro, switch `AI_PROVIDER` to `anthropic` in your env vars and add a billed `ANTHROPIC_API_KEY` -- see `src/lib/ai/provider.ts`, no other code changes are needed for that swap. Don't wait until the free tier is visibly failing in production to make this switch; budget for it as soon as you have paying owners actively onboarding candidates at volume.
+

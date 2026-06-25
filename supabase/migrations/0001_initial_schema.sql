@@ -47,7 +47,8 @@ create table public.roles (
 );
 
 insert into public.roles (slug, label) values
-  ('dentist_associate', 'Dentist / Associate (DDS, DMD)'),
+  ('dentist_owner', 'Dentist / Practice Owner (DDS, DMD)'),
+  ('associate_dentist', 'Associate Dentist'),
   ('hygienist', 'Dental Hygienist (RDH)'),
   ('dental_assistant', 'Dental Assistant (DA, RDA, EFDA)'),
   ('office_manager', 'Office / Practice Manager'),
@@ -55,6 +56,7 @@ insert into public.roles (slug, label) values
   ('treatment_coordinator', 'Treatment Coordinator'),
   ('billing_coordinator', 'Billing / Insurance Coordinator'),
   ('lab_tech', 'Dental Lab Technician'),
+  ('sterilization_tech', 'Sterilization Technician'),
   ('sales_rep', 'Dental Sales Representative');
 
 create table public.role_aliases (
@@ -71,7 +73,29 @@ insert into public.role_aliases (role_id, slug, label)
   union all
   select id, 'operations_manager', 'Operations Manager' from public.roles where slug = 'office_manager'
   union all
-  select id, 'business_manager', 'Business Manager' from public.roles where slug = 'office_manager';
+  select id, 'business_manager', 'Business Manager' from public.roles where slug = 'office_manager'
+  union all
+  select id, 'general_manager', 'General Manager' from public.roles where slug = 'office_manager';
+
+insert into public.role_aliases (role_id, slug, label)
+  select id, 'patient_coordinator', 'Patient Coordinator' from public.roles where slug = 'treatment_coordinator'
+  union all
+  select id, 'new_patient_coordinator', 'New Patient Coordinator' from public.roles where slug = 'treatment_coordinator';
+
+insert into public.role_aliases (role_id, slug, label)
+  select id, 'receptionist', 'Receptionist' from public.roles where slug = 'front_desk'
+  union all
+  select id, 'scheduling_coordinator', 'Scheduling Coordinator' from public.roles where slug = 'front_desk';
+
+insert into public.role_aliases (role_id, slug, label)
+  select id, 'insurance_coordinator', 'Insurance Coordinator' from public.roles where slug = 'billing_coordinator'
+  union all
+  select id, 'insurance_biller', 'Insurance Biller' from public.roles where slug = 'billing_coordinator';
+
+insert into public.role_aliases (role_id, slug, label)
+  select id, 'expanded_function_assistant', 'Expanded Function Dental Assistant' from public.roles where slug = 'dental_assistant'
+  union all
+  select id, 'orthodontic_assistant', 'Orthodontic Assistant' from public.roles where slug = 'dental_assistant';
 
 create table public.dealbreaker_tags (
   id serial primary key,
@@ -93,7 +117,14 @@ create table public.software_tags (
 insert into public.software_tags (slug, label) values
   ('dentrix', 'Dentrix'),
   ('eaglesoft', 'Eaglesoft'),
-  ('open_dental', 'Open Dental');
+  ('open_dental', 'Open Dental'),
+  ('curve_dental', 'Curve Dental'),
+  ('dovetail', 'Dovetail'),
+  ('denticon', 'Denticon'),
+  ('practice_web', 'PracticeWeb'),
+  ('cloud_9', 'Cloud 9 Ortho'),
+  ('carestack', 'CareStack'),
+  ('dentimax', 'DentiMax');
 
 -- ============================================================
 -- 3. CANDIDATE PROFILE

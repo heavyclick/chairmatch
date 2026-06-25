@@ -1,4 +1,4 @@
-import { Lock, MapPin, GraduationCap, Plane } from "lucide-react";
+import { Lock, MapPin, GraduationCap, Plane, Star, MessageSquare } from "lucide-react";
 import type { CandidateProfile, BlurredCandidateProfile } from "@/types/database";
 import { cn } from "@/lib/utils";
 
@@ -101,10 +101,12 @@ export function CandidateCard({ candidate }: CardProps) {
           </button>
         ) : (
           <>
-            <button className="flex-1 py-2.5 rounded-control text-sm font-semibold border border-line hover:border-teal hover:text-teal-deep transition">
+            <button className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-control text-sm font-semibold border border-line hover:border-teal hover:text-teal-deep transition">
+              <Star size={13} />
               Shortlist
             </button>
-            <button className="flex-1 py-2.5 rounded-control text-sm font-semibold bg-teal text-white hover:bg-teal-deep transition">
+            <button className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-control text-sm font-semibold bg-teal text-white hover:bg-teal-deep transition">
+              <MessageSquare size={13} />
               Message
             </button>
           </>
