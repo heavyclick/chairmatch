@@ -149,7 +149,7 @@ export interface PracticeProfile {
   subscription_tier: SubscriptionTier;
   subscription_renews_at: string | null;
   screening_credit_balance: number;
-  stripe_customer_id: string | null;
+  dodo_customer_id: string | null;
 
   created_at: string;
 

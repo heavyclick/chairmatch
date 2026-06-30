@@ -9,9 +9,16 @@ import type { CandidateProfile, BlurredCandidateProfile } from "@/types/database
  * regardless of subscription tier (per product decision -- the paywall
  * is identity/contact, not search). The blur/redaction of full_name and
  * photo_url for free-tier owners happens HERE, server-side, before the
- * response is ever serialized -- never send real name/photo to the
- * client and hide it with CSS. A free-tier owner reading the network
- * tab must not be able to see locked candidates' identities.
+ * response is ever serialized.
+ *
+ * IMPORTANT: this was previously broken for role filtering. The old
+ * code called .eq("roles.slug", roleSlug) against a query that embeds
+ * roles via `role:roles(*)` in select() -- PostgREST does not support
+ * filtering on embedded/joined resource columns that way; it's silently
+ * ignored rather than erroring, which is exactly the kind of bug that's
+ * invisible until someone actually checks. Fixed by resolving the role
+ * slug to its numeric id first, then filtering on the base table's own
+ * primary_role_id column directly.
  */
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -41,18 +48,42 @@ export async function GET(request: NextRequest) {
   const lng = searchParams.get("lng");
   const radiusMiles = searchParams.get("radius_miles") ?? "15";
   const openToRelocation = searchParams.get("open_to_relocation");
+  const remoteOnly = searchParams.get("remote_only");
+  const city = searchParams.get("city");
+  const state = searchParams.get("state");
+  const zip = searchParams.get("zip");
+  const softwareSlugs = searchParams.get("software"); // comma-separated
   const excludeDealbreakers = searchParams.get("exclude_dealbreakers"); // comma-separated slugs
+  const availableDays = searchParams.get("available_days"); // comma-separated day numbers
 
   let query = supabase
     .from("candidate_profiles")
     .select(
-      `*, role:roles(*), dealbreakers:candidate_dealbreakers(dealbreaker_tags(*))`
+      `*, role:roles(*), dealbreakers:candidate_dealbreakers(dealbreaker_tags(*)), software:candidate_software(software_tags(*))`
     )
     .eq("visibility_status", "actively_looking");
 
+  // Resolve role slug -> id BEFORE filtering, rather than filtering on
+  // the embedded roles(*) resource directly (the bug described above).
   if (roleSlug) {
-    query = query.eq("roles.slug", roleSlug);
+    const { data: roleRow, error: roleError } = await supabase
+      .from("roles")
+      .select("id")
+      .eq("slug", roleSlug)
+      .single();
+
+    if (roleError || !roleRow) {
+      console.error("[/api/search] role lookup failed for slug:", roleSlug, roleError);
+      // Fail closed (no results) rather than silently ignoring the
+      // filter and returning everyone -- a broken filter that returns
+      // nothing is obviously wrong and gets noticed; one that returns
+      // everything looks like it's "sort of working" and hides the bug,
+      // which is exactly what happened before.
+      return NextResponse.json({ results: [], count: 0, tier });
+    }
+    query = query.eq("primary_role_id", roleRow.id);
   }
+
   if (employmentType) {
     query = query.contains("employment_types", [employmentType]);
   }
@@ -68,21 +99,32 @@ export async function GET(request: NextRequest) {
   if (openToRelocation === "true") {
     query = query.eq("open_to_relocation", true);
   }
+  if (remoteOnly === "true") {
+    query = query.eq("open_to_remote", true);
+  }
+  if (city) {
+    query = query.ilike("city", city);
+  }
+  if (state) {
+    query = query.ilike("state", state);
+  }
+  if (zip) {
+    query = query.eq("zip", zip);
+  }
 
   const { data: candidates, error } = await query.limit(50);
 
   if (error) {
+    console.error("[/api/search] query failed:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Radius filtering via the candidates_within_radius() Postgres function
-  // when lat/lng provided -- kept as a second query rather than folding into
-  // the builder above because PostgREST's filter builder doesn't compose
-  // cleanly with a custom geography RPC; revisit if this becomes a
-  // performance bottleneck at scale.
   let filtered = candidates ?? [];
+
+  // Radius filtering via the candidates_within_radius() Postgres function
+  // when lat/lng provided.
   if (lat && lng) {
-    const { data: withinRadius } = await supabase.rpc(
+    const { data: withinRadius, error: radiusError } = await supabase.rpc(
       "candidates_within_radius",
       {
         center_lat: Number(lat),
@@ -90,8 +132,22 @@ export async function GET(request: NextRequest) {
         radius_miles: Number(radiusMiles),
       }
     );
-    const allowedIds = new Set((withinRadius ?? []).map((c: { id: string }) => c.id));
-    filtered = filtered.filter((c) => allowedIds.has(c.id));
+    if (radiusError) {
+      console.error("[/api/search] radius RPC failed:", radiusError);
+    } else {
+      const allowedIds = new Set((withinRadius ?? []).map((c: { id: string }) => c.id));
+      filtered = filtered.filter((c) => allowedIds.has(c.id));
+    }
+  }
+
+  if (softwareSlugs) {
+    const wantedSlugs = new Set(softwareSlugs.split(","));
+    filtered = filtered.filter((c) => {
+      const candidateSoftwareSlugs = (c.software ?? []).map(
+        (s: { software_tags: { slug: string } }) => s.software_tags.slug
+      );
+      return candidateSoftwareSlugs.some((slug: string) => wantedSlugs.has(slug));
+    });
   }
 
   // Dealbreaker exclusion: drop candidates who've flagged a dealbreaker
@@ -104,6 +160,37 @@ export async function GET(request: NextRequest) {
       );
       return !candidateDealbreakerSlugs.some((slug: string) => excludeSlugs.has(slug));
     });
+  }
+
+  if (availableDays) {
+    const wantedDays = new Set(availableDays.split(",").map(Number));
+    const candidateIds = filtered.map((c) => c.id);
+    if (candidateIds.length > 0) {
+      const { data: availabilityRows } = await supabase
+        .from("candidate_availability")
+        .select("candidate_id, day_of_week")
+        .in("candidate_id", candidateIds);
+      const idsWithMatchingDay = new Set(
+        (availabilityRows ?? [])
+          .filter((a) => wantedDays.has(a.day_of_week))
+          .map((a) => a.candidate_id)
+      );
+      filtered = filtered.filter((c) => idsWithMatchingDay.has(c.id));
+    }
+  }
+
+  // A candidate may have hidden their profile from THIS specific
+  // practice (e.g. "hide me from my current employer") -- distinct
+  // from visibility_status, which is global/all-or-nothing. Enforced
+  // here, server-side, same principle as the blur logic below: this
+  // must not be something the client can bypass by just not checking.
+  const { data: blocks } = await supabase
+    .from("candidate_practice_blocks")
+    .select("candidate_id")
+    .eq("practice_id", authUser.user.id);
+  if (blocks && blocks.length > 0) {
+    const blockedIds = new Set(blocks.map((b) => b.candidate_id));
+    filtered = filtered.filter((c) => !blockedIds.has(c.id));
   }
 
   // ---- the actual paywall enforcement ----

@@ -37,7 +37,16 @@ export async function middleware(request: NextRequest) {
   const isOwnerRoute = path.startsWith("/owner");
   const isCandidateRoute = path.startsWith("/candidate");
 
-  if (!user && (isOwnerRoute || isCandidateRoute)) {
+  // AUTH_ENFORCEMENT_ENABLED gates this redirect because there is no
+  // /login page yet (see app/(auth)/login/ -- folder exists, no
+  // page.tsx inside it). Without this flag, every visit to /owner/* or
+  // /candidate/* bounces to a 404'ing /login in an infinite loop.
+  // Once a real login page exists, set AUTH_ENFORCEMENT_ENABLED=true
+  // in .env.local (or just delete this flag check) to turn real auth
+  // gating back on.
+  const authEnforcementEnabled = process.env.AUTH_ENFORCEMENT_ENABLED === "true";
+
+  if (authEnforcementEnabled && !user && (isOwnerRoute || isCandidateRoute)) {
     const redirectUrl = new URL("/login", request.url);
     return NextResponse.redirect(redirectUrl);
   }

@@ -1,6 +1,12 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Lock, MapPin, GraduationCap, Plane, Star, MessageSquare } from "lucide-react";
 import type { CandidateProfile, BlurredCandidateProfile } from "@/types/database";
 import { cn } from "@/lib/utils";
+import { PricingModal } from "@/components/shared/pricing-modal";
 
 type CardProps = {
   candidate: CandidateProfile | BlurredCandidateProfile;
@@ -22,6 +28,10 @@ function initials(name: string) {
 }
 
 export function CandidateCard({ candidate }: CardProps) {
+  const router = useRouter();
+  const [messaging, setMessaging] = useState(false);
+  const [pricingOpen, setPricingOpen] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
   const locked = isLocked(candidate);
   const payLabel =
     candidate.pay_range_min && candidate.pay_range_max
@@ -30,8 +40,51 @@ export function CandidateCard({ candidate }: CardProps) {
         }`
       : null;
 
+  async function handleMessage(e: React.MouseEvent) {
+    e.preventDefault();
+    setMessaging(true);
+    try {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId: candidate.id,
+          body: "Hi! I'd love to learn more about your background.",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        router.push(`/owner/messages/${data.threadId}`);
+      }
+    } finally {
+      setMessaging(false);
+    }
+  }
+
+  async function handleChoosePlan(kind: "standard" | "pro") {
+    setCheckingOut(true);
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "Couldn't start checkout.");
+        setCheckingOut(false);
+      }
+    } catch {
+      alert("Couldn't start checkout -- check your connection and try again.");
+      setCheckingOut(false);
+    }
+  }
+
   return (
-    <div className="group rounded-card border border-line bg-bg-raised p-6 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ink/5 hover:border-line cursor-pointer flex flex-col">
+    <div className="group rounded-card border border-line bg-bg-raised p-6 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ink/5 hover:border-line flex flex-col">
+      <Link href={`/owner/candidate/${candidate.id}`} className="flex flex-col flex-1 cursor-pointer">
       <div className="flex gap-3.5 mb-4">
         <div className="relative shrink-0">
           <div
@@ -42,7 +95,7 @@ export function CandidateCard({ candidate }: CardProps) {
                 : "bg-gradient-to-br from-teal to-teal-deep"
             )}
           >
-            {locked ? "" : initials(candidate.full_name)}
+            {locked || !candidate.full_name ? "" : initials(candidate.full_name)}
           </div>
           {locked && (
             <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-ink text-white flex items-center justify-center border-2 border-bg-raised">
@@ -92,10 +145,17 @@ export function CandidateCard({ candidate }: CardProps) {
           &ldquo;{candidate.value_add_text}&rdquo;
         </blockquote>
       )}
+      </Link>
 
       <div className="flex gap-2.5 mt-auto">
         {locked ? (
-          <button className="flex-1 py-2.5 rounded-control text-sm font-semibold bg-ink text-white hover:bg-teal-deep transition">
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              setPricingOpen(true);
+            }}
+            className="flex-1 py-2.5 rounded-control text-sm font-semibold bg-ink text-white hover:bg-teal-deep transition"
+          >
             <Lock size={13} className="inline mr-1.5 -mt-0.5" />
             Unlock to contact
           </button>
@@ -105,13 +165,23 @@ export function CandidateCard({ candidate }: CardProps) {
               <Star size={13} />
               Shortlist
             </button>
-            <button className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-control text-sm font-semibold bg-teal text-white hover:bg-teal-deep transition">
+            <button
+              onClick={handleMessage}
+              disabled={messaging}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-control text-sm font-semibold bg-teal text-white hover:bg-teal-deep transition disabled:opacity-60"
+            >
               <MessageSquare size={13} />
-              Message
+              {messaging ? "Opening…" : "Message"}
             </button>
           </>
         )}
       </div>
+
+      <PricingModal
+        open={pricingOpen}
+        onClose={() => !checkingOut && setPricingOpen(false)}
+        onChoosePlan={handleChoosePlan}
+      />
     </div>
   );
 }

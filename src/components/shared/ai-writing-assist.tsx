@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Sparkles, Send, Loader2 } from "lucide-react";
 
 interface AiWritingAssistProps {
-  field: "value_add" | "future_goals" | "recovery_scenario" | "culture" | "thrive" | "honest_challenges";
+  field: "value_add" | "future_goals" | "recovery_scenario" | "culture" | "thrive" | "honest_challenges" | "ideal_practice" | "ideal_staff";
   currentValue: string;
   onSuggestion?: (text: string) => void;
 }

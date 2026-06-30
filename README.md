@@ -63,6 +63,7 @@ These are three separate, complementary things, not alternatives to each other:
 5. From now on: every time you `git push` to `main`, Vercel automatically redeploys. You don't manually deploy again -- push is the deploy trigger.
 
 **Day-to-day workflow once this is set up:**
+
 - Make changes locally, check them with `npm run dev` at `localhost:3000`.
 - When happy: `git add -A && git commit -m "what you changed" && git push`.
 - Vercel rebuilds automatically; check the live URL in ~1-2 minutes.
@@ -86,13 +87,16 @@ npm install
 1. Create a project at supabase.com (free tier is enough to start).
 2. Copy `.env.example` to `.env.local` and fill in your project URL and keys (Project Settings -> API).
 3. Push the schema:
+
    ```bash
    npx supabase login
    npx supabase link --project-ref <your-project-ref>
    npx supabase db push
    ```
+
    Or just paste the contents of `supabase/migrations/0001_initial_schema.sql` into the Supabase SQL Editor and run it directly -- equally valid at this stage.
 4. Once the schema is live, generate real types to replace the hand-written placeholder in `src/types/database.ts`:
+
    ```bash
    npx supabase gen types typescript --project-id <your-project-ref> > src/types/database-generated.ts
    ```
@@ -163,18 +167,18 @@ supabase/
 
 See `ChairMatch-Build-Document.docx`, Section 5, for the full rationale. Quick reference:
 
-| Layer | Choice |
-|---|---|
-| Framework | Next.js 15, App Router |
-| Styling | Tailwind v4 (CSS-first `@theme`) + custom design tokens |
-| Components | shadcn/ui as base primitives (not yet installed -- run `npx shadcn@latest init` when starting on UI components beyond what's here) |
-| Database | Supabase (Postgres + PostGIS for radius search, Auth, Storage) |
-| Forms | react-hook-form + zod |
-| Data fetching | TanStack Query (client) + Server Components (initial load) |
-| Payments | Stripe |
-| AI | Anthropic API (Claude) -- used for query-to-filter translation, outreach drafting, hiring advisor, screening |
-| SMS | Twilio |
-| Hosting | Vercel (recommended) or AWS EC2 (fallback, given existing ops familiarity) |
+| Layer         | Choice                                                                                                                              |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Framework     | Next.js 15, App Router                                                                                                              |
+| Styling       | Tailwind v4 (CSS-first`@theme`) + custom design tokens                                                                            |
+| Components    | shadcn/ui as base primitives (not yet installed -- run`npx shadcn@latest init` when starting on UI components beyond what's here) |
+| Database      | Supabase (Postgres + PostGIS for radius search, Auth, Storage)                                                                      |
+| Forms         | react-hook-form + zod                                                                                                               |
+| Data fetching | TanStack Query (client) + Server Components (initial load)                                                                          |
+| Payments      | Stripe                                                                                                                              |
+| AI            | Anthropic API (Claude) -- used for query-to-filter translation, outreach drafting, hiring advisor, screening                        |
+| SMS           | Twilio                                                                                                                              |
+| Hosting       | Vercel (recommended) or AWS EC2 (fallback, given existing ops familiarity)                                                          |
 
 ## A note on next/font/google in restricted network environments
 
@@ -199,9 +203,9 @@ Phase 2 (AI search/outreach/advisor/screening beyond onboarding-assist) and Phas
 The onboarding writing-helper (the "Stuck? Get help writing this" button on every qualitative field) calls `/api/ai/onboarding-assist`, which by default routes through **GitHub Models** -- a free, Azure-hosted endpoint for testing against GPT-4o-mini and other models without a paid API key.
 
 To use it:
+
 1. Get a token: GitHub -> Settings -> Developer settings -> Personal access tokens -> generate one with `models: read` permission (or grab a key directly from a model page at github.com/marketplace/models).
 2. Add it to `.env.local` as `GITHUB_MODELS_TOKEN`.
 3. That's it -- `AI_PROVIDER=github_models` is already the default in `.env.example`.
 
 **Known limitation to plan around:** GitHub Models' free tier has real rate limits (low requests-per-minute, meant for testing/prototyping, not production traffic). This is fine for development and even for an early soft-launch with modest volume, but once there's real onboarding traffic in a launch metro, switch `AI_PROVIDER` to `anthropic` in your env vars and add a billed `ANTHROPIC_API_KEY` -- see `src/lib/ai/provider.ts`, no other code changes are needed for that swap. Don't wait until the free tier is visibly failing in production to make this switch; budget for it as soon as you have paying owners actively onboarding candidates at volume.
-

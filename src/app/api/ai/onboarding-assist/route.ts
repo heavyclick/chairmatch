@@ -23,7 +23,9 @@ type FieldKey =
   | "recovery_scenario"
   | "culture"
   | "thrive"
-  | "honest_challenges";
+  | "honest_challenges"
+  | "ideal_practice"
+  | "ideal_staff";
 
 const FIELD_PROMPTS: Record<FieldKey, string> = {
   value_add:
@@ -32,12 +34,16 @@ const FIELD_PROMPTS: Record<FieldKey, string> = {
     "You're helping a dental staff candidate answer: 'Where do you want to be in your career in 2 years?' Ask one short follow-up to make a vague answer concrete (e.g. 'growing professionally' -> what specifically: clinical specialty, leadership, mentoring?), OR propose a tightened draft. Keep your response under 60 words.",
   recovery_scenario:
     "You're helping a dental staff candidate answer: 'If a practice is struggling with low patient volume or dipping production, how would you help bring revenue back up?' This is the platform's signature question -- push for a specific, actionable answer (e.g. a concrete process, not 'work harder'). Ask one sharp follow-up or propose a tightened draft. Keep your response under 60 words.",
+  ideal_practice:
+    "You're helping a dental staff candidate answer: 'Describe your ideal practice.' Push for specifics about pace, team size, culture, autonomy -- not generic wishes like 'a good place to work'. Ask one follow-up or propose a tightened draft. Keep your response under 60 words.",
   culture:
     "You're helping a dental practice owner describe their workplace culture honestly, for a staffing platform where candidates can see this before applying. Ask one follow-up to get past generic phrases like 'great team environment', or propose a tightened, specific, honest draft. Keep your response under 60 words.",
   thrive:
     "You're helping a dental practice owner answer: 'What would make someone thrive here?' Push for specifics about pace, autonomy, team dynamics -- not generic positivity. Ask one follow-up or propose a tightened draft. Keep your response under 60 words.",
   honest_challenges:
     "You're helping a dental practice owner honestly describe what's hard about working at their practice (e.g. high patient volume, demanding schedule). This builds trust with candidates by setting real expectations. Ask one gentle follow-up if their answer is too vague or defensive, or propose a tightened, honest draft. Keep your response under 60 words.",
+  ideal_staff:
+    "You're helping a dental practice owner answer: 'Describe your ideal staff member.' Push for specifics about skills, temperament, and what actually matters for this practice -- not generic wishes like 'a team player'. Ask one follow-up or propose a tightened draft. Keep your response under 60 words.",
 };
 
 export async function POST(request: NextRequest) {

@@ -91,3 +91,34 @@ export const EMPLOYMENT_TYPES = [
   { slug: "part_time", label: "Part-Time" },
   { slug: "temp", label: "Temp" },
 ] as const;
+
+// Full state list needed because city alone is ambiguous (e.g. there
+// are multiple "Houston"s, multiple "Springfield"s, etc.) -- this was a
+// confirmed gap, city was collected with no state to disambiguate it.
+export const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN",
+  "IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV",
+  "NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN",
+  "TX","UT","VT","VA","WA","WV","WI","WY","DC",
+];
+
+export const SPECIALTY_OPTIONS = [
+  { slug: "general", label: "General Dentistry" },
+  { slug: "orthodontics", label: "Orthodontics" },
+  { slug: "periodontics", label: "Periodontics" },
+  { slug: "pediatric", label: "Pediatric Dentistry" },
+  { slug: "oral_surgery", label: "Oral Surgery" },
+  { slug: "cosmetic", label: "Cosmetic Dentistry" },
+  { slug: "endodontics", label: "Endodontics" },
+  { slug: "prosthodontics", label: "Prosthodontics" },
+];
+
+export const DAYS_OF_WEEK = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+];
