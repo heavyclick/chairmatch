@@ -1,24 +1,23 @@
 import Link from "next/link";
-import { Home, MessageSquare, Settings, Bell, User, Eye, Building2 } from "lucide-react";
+import { MessageSquare, User } from "lucide-react";
 import { MobileNavItem } from "@/components/owner/mobile-nav-item";
 import { LogoutButton } from "@/components/shared/logout-button";
+import { NotificationBell } from "@/components/shared/notification-bell";
+import { SharePopupTracker } from "@/components/shared/share-popup";
+import { HelpChatWidget } from "@/components/shared/help-chat-widget";
+import { CandidateSidebarNav } from "@/components/shared/candidate-sidebar-nav";
 
 export default function CandidateLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
+      <SharePopupTracker accountType="candidate" />
+      <HelpChatWidget accountType="candidate" />
       <aside className="hidden md:flex md:w-[210px] md:flex-col md:shrink-0 bg-ink px-4 py-7 sticky top-0 h-screen overflow-y-auto">
         <Link href="/" className="flex items-center gap-2 px-2 mb-9">
           <span className="w-[7px] h-[7px] rounded-full bg-coral" />
           <span className="font-serif text-lg font-semibold text-white">ChairMatch</span>
         </Link>
-        <nav className="flex-1">
-          <SidebarLink icon={Home} label="Dashboard" href="/candidate/dashboard" />
-          <SidebarLink icon={User} label="My Profile" href="/candidate/profile" />
-          <SidebarLink icon={Building2} label="Browse Practices" href="/candidate/practices" />
-          <SidebarLink icon={Eye} label="See it from their side" href="/candidate/browse-preview" />
-          <SidebarLink icon={MessageSquare} label="Messages" href="/candidate/messages" />
-          <SidebarLink icon={Settings} label="Settings" href="/candidate/settings" />
-        </nav>
+        <CandidateSidebarNav />
         <div className="mt-3 pt-3 border-t border-white/10">
           <LogoutButton />
         </div>
@@ -30,9 +29,7 @@ export default function CandidateLayout({ children }: { children: React.ReactNod
           <span className="font-serif text-base font-semibold text-white">ChairMatch</span>
         </Link>
         <div className="flex items-center gap-2.5">
-          <button className="relative w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white">
-            <Bell size={15} />
-          </button>
+          <NotificationBell dark />
           <Link
             href="/candidate/profile"
             className="w-9 h-9 rounded-full bg-teal flex items-center justify-center text-white"
@@ -54,12 +51,7 @@ export default function CandidateLayout({ children }: { children: React.ReactNod
           >
             <MessageSquare size={15} />
           </Link>
-          <button
-            className="w-9 h-9 rounded-full bg-bg-raised border border-line flex items-center justify-center text-ink-soft hover:border-teal transition-colors"
-            title="Notifications"
-          >
-            <Bell size={15} />
-          </button>
+          <NotificationBell />
           <Link
             href="/candidate/profile"
             className="w-9 h-9 rounded-full bg-teal flex items-center justify-center text-white hover:bg-teal-deep transition-colors"
@@ -78,17 +70,5 @@ export default function CandidateLayout({ children }: { children: React.ReactNod
         <MobileNavItem icon="Settings" label="Settings" href="/candidate/settings" />
       </nav>
     </div>
-  );
-}
-
-function SidebarLink({ icon: Icon, label, href }: { icon: typeof Home; label: string; href: string }) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center gap-3 px-3.5 py-2.5 rounded-[10px] text-sm font-medium text-[#B9C6C2] hover:bg-white/5 hover:text-white transition-colors mb-0.5"
-    >
-      <Icon size={17} strokeWidth={2} className="shrink-0" />
-      {label}
-    </Link>
   );
 }

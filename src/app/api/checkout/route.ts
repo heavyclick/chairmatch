@@ -28,6 +28,22 @@ export async function POST(request: NextRequest) {
   }
 
   const { kind } = (await request.json()) as { kind: CheckoutKind };
+
+  // PAUSED (AI Pro tier): only "standard" is purchasable right now --
+  // AI Search/Advisor/Screening are paused pending real demand, so
+  // "pro" and the screening-credit packs (which only make sense once
+  // Pro exists) are rejected here even if something upstream (a stale
+  // client bundle, a direct API call) tries to request them. This is
+  // the one line to remove, along with the matching UI in
+  // src/app/owner/settings/billing/page.tsx and the entitlement logic
+  // in src/lib/dodo/apply-entitlement.ts, when Pro is re-enabled.
+  if (kind !== "standard") {
+    return NextResponse.json(
+      { error: "That plan isn't available yet." },
+      { status: 400 }
+    );
+  }
+
   const productId = DODO_PRODUCT_IDS[kind];
 
   if (!productId) {
@@ -43,12 +59,14 @@ export async function POST(request: NextRequest) {
     .eq("id", authData.user.id)
     .single();
 
-  if ((kind === "credits_10" || kind === "credits_25") && practice?.subscription_tier !== "pro") {
-    return NextResponse.json(
-      { error: "Screening credits are only available on the Pro plan." },
-      { status: 403 }
-    );
-  }
+  // PAUSED (AI Pro tier): unreachable now that the guard above only
+  // allows "standard" through, kept for when Pro is re-enabled.
+  // if ((kind === "credits_10" || kind === "credits_25") && practice?.subscription_tier !== "pro") {
+  //   return NextResponse.json(
+  //     { error: "Screening credits are only available on the Pro plan." },
+  //     { status: 403 }
+  //   );
+  // }
 
   const dodo = getDodoClient();
   const origin = request.headers.get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";

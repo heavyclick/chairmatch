@@ -30,7 +30,36 @@ interface ReviewListProps {
   allowFlagging?: boolean;
 }
 
-export function ReviewSummaryAndList({ reviews, averageRating, allowFlagging }: ReviewListProps) {
+/**
+ * Just the star rating + review count -- split out from the full list
+ * (profile redesign, #22) so it can be placed at the top of a profile
+ * ("the review rating, just the rating and count, I was expecting to
+ * show at the top") while the actual review comments stay further down
+ * the page. See ReviewList below for the comments themselves, and
+ * ReviewSummaryAndList for the original combined version (unchanged,
+ * still used by the candidate's own self-view).
+ */
+export function ReviewRatingSummary({
+  averageRating,
+  reviewCount,
+}: {
+  averageRating: number | null;
+  reviewCount: number;
+}) {
+  if (averageRating == null) return null;
+  return (
+    <div className="flex items-center gap-2.5">
+      <StarRow rating={Math.round(averageRating)} size={15} />
+      <span className="text-[14.5px] font-semibold">{averageRating.toFixed(1)}</span>
+      <span className="text-[13px] text-ink-faint">
+        ({reviewCount} review{reviewCount === 1 ? "" : "s"})
+      </span>
+    </div>
+  );
+}
+
+/** Just the review comments/flagging -- see ReviewRatingSummary above for why these are split. */
+export function ReviewList({ reviews, allowFlagging }: Pick<ReviewListProps, "reviews" | "allowFlagging">) {
   const [flagging, setFlagging] = useState<string | null>(null);
   const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set());
 
@@ -46,49 +75,50 @@ export function ReviewSummaryAndList({ reviews, averageRating, allowFlagging }: 
     setFlagging(null);
   }
 
+  if (reviews.length === 0) {
+    return <p className="text-[13.5px] text-ink-faint">No reviews yet.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {reviews.map((r) => {
+        const isFlagged = flaggedIds.has(r.id);
+        return (
+          <div key={r.id} className="rounded-xl border border-line bg-bg-raised p-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[13.5px] font-semibold">{r.reviewer_name}</span>
+              <StarRow rating={r.rating} />
+            </div>
+            {r.review_text && <p className="text-[13.5px] text-ink-soft leading-relaxed mb-2">{r.review_text}</p>}
+
+            {allowFlagging && !isFlagged && flagging !== r.id && (
+              <button
+                onClick={() => setFlagging(r.id)}
+                className="flex items-center gap-1 text-[11.5px] text-ink-faint hover:text-coral-deep"
+              >
+                <Flag size={11} /> Flag this review
+              </button>
+            )}
+            {allowFlagging && isFlagged && <p className="text-[11.5px] text-teal-deep">Flagged for review.</p>}
+            {allowFlagging && flagging === r.id && (
+              <FlagReasonInput onSubmit={(reason) => submitFlag(r.id, reason)} onCancel={() => setFlagging(null)} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Original combined summary+list, unchanged -- kept for the candidate self-view, which still wants both together. */
+export function ReviewSummaryAndList({ reviews, averageRating, allowFlagging }: ReviewListProps) {
   return (
     <div>
-      <div className="flex items-center gap-2.5 mb-4">
-        {averageRating != null ? (
-          <>
-            <StarRow rating={Math.round(averageRating)} size={15} />
-            <span className="text-[14.5px] font-semibold">{averageRating.toFixed(1)}</span>
-            <span className="text-[13px] text-ink-faint">({reviews.length} reviews)</span>
-          </>
-        ) : (
-          <span className="text-[13.5px] text-ink-faint">No reviews yet</span>
-        )}
+      <div className="mb-4">
+        <ReviewRatingSummary averageRating={averageRating} reviewCount={reviews.length} />
+        {averageRating == null && <span className="text-[13.5px] text-ink-faint">No reviews yet</span>}
       </div>
-
-      <div className="space-y-3">
-        {reviews.map((r) => {
-          const isFlagged = flaggedIds.has(r.id);
-          return (
-            <div key={r.id} className="rounded-xl border border-line bg-bg-raised p-4">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[13.5px] font-semibold">{r.reviewer_name}</span>
-                <StarRow rating={r.rating} />
-              </div>
-              {r.review_text && <p className="text-[13.5px] text-ink-soft leading-relaxed mb-2">{r.review_text}</p>}
-
-              {allowFlagging && !isFlagged && flagging !== r.id && (
-                <button
-                  onClick={() => setFlagging(r.id)}
-                  className="flex items-center gap-1 text-[11.5px] text-ink-faint hover:text-coral-deep"
-                >
-                  <Flag size={11} /> Flag this review
-                </button>
-              )}
-              {allowFlagging && isFlagged && (
-                <p className="text-[11.5px] text-teal-deep">Flagged for review.</p>
-              )}
-              {allowFlagging && flagging === r.id && (
-                <FlagReasonInput onSubmit={(reason) => submitFlag(r.id, reason)} onCancel={() => setFlagging(null)} />
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <ReviewList reviews={reviews} allowFlagging={allowFlagging} />
     </div>
   );
 }

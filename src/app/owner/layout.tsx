@@ -3,6 +3,8 @@ import { Bell } from "lucide-react";
 import { OwnerSidebar } from "@/components/owner/owner-sidebar";
 import { OwnerTopbar } from "@/components/owner/owner-topbar";
 import { MobileNavItem } from "@/components/owner/mobile-nav-item";
+import { SharePopupTracker } from "@/components/shared/share-popup";
+import { HelpChatWidget } from "@/components/shared/help-chat-widget";
 
 export default function OwnerLayout({
   children,
@@ -11,6 +13,8 @@ export default function OwnerLayout({
 }) {
   return (
     <div className="flex min-h-screen">
+      <SharePopupTracker accountType="owner" />
+      <HelpChatWidget accountType="owner" />
       <OwnerSidebar />
 
       {/* MOBILE TOPBAR */}

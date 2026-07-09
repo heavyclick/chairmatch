@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, MessageSquare, User } from "lucide-react";
+import { MessageSquare, User } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { NotificationBell } from "@/components/shared/notification-bell";
 
 export function OwnerTopbar() {
   const [practiceName, setPracticeName] = useState<string | null>(null);
@@ -30,12 +31,7 @@ export function OwnerTopbar() {
       >
         <MessageSquare size={15} />
       </Link>
-      <button
-        className="relative w-9 h-9 rounded-full bg-bg-raised border border-line flex items-center justify-center text-ink-soft hover:border-teal transition-colors"
-        title="Notifications"
-      >
-        <Bell size={15} />
-      </button>
+      <NotificationBell />
       <Link
         href="/owner/profile"
         className="flex items-center gap-2 pl-1 pr-3 h-9 rounded-full bg-bg-raised border border-line hover:border-teal transition-colors"

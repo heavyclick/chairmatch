@@ -37,13 +37,14 @@ export async function middleware(request: NextRequest) {
   const isOwnerRoute = path.startsWith("/owner");
   const isCandidateRoute = path.startsWith("/candidate");
 
-  // AUTH_ENFORCEMENT_ENABLED gates this redirect because there is no
-  // /login page yet (see app/(auth)/login/ -- folder exists, no
-  // page.tsx inside it). Without this flag, every visit to /owner/* or
-  // /candidate/* bounces to a 404'ing /login in an infinite loop.
-  // Once a real login page exists, set AUTH_ENFORCEMENT_ENABLED=true
-  // in .env.local (or just delete this flag check) to turn real auth
-  // gating back on.
+  // AUTH_ENFORCEMENT_ENABLED gates this redirect. Originally added
+  // because /login didn't exist yet -- it does now (see
+  // app/(auth)/login/page.tsx, a real working signInWithPassword flow)
+  // -- but this flag still defaults to false, which means right now
+  // ANY visitor can reach every /owner/* and /candidate/* route with
+  // zero authentication. This MUST be set to "true" in production
+  // (Vercel project env vars) before launch, or there is no login
+  // requirement on the entire app whatsoever.
   const authEnforcementEnabled = process.env.AUTH_ENFORCEMENT_ENABLED === "true";
 
   if (authEnforcementEnabled && !user && (isOwnerRoute || isCandidateRoute)) {

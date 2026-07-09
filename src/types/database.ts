@@ -71,6 +71,7 @@ export interface WorkHistoryEntry {
   start_date: string | null;
   end_date: string | null; // null = current role
   sort_order: number;
+  company_website: string | null;
 }
 
 export interface AvailabilitySlot {
@@ -99,6 +100,10 @@ export interface CandidateProfile {
   university: string | null;
   certifications: string[];
   ce_courses: string[];
+  skills: string[];
+  hobbies: string[];
+  ai_skill_chips: string[] | null;
+  ai_skill_chips_generated_at: string | null;
   years_experience: number | null;
 
   value_add_text: string | null;
@@ -118,6 +123,8 @@ export interface CandidateProfile {
   software?: SoftwareTag[];
   work_history?: WorkHistoryEntry[];
   availability?: AvailabilitySlot[];
+  averageRating?: number | null;
+  reviewCount?: number;
 }
 
 /**
@@ -150,6 +157,13 @@ export interface PracticeProfile {
   subscription_renews_at: string | null;
   screening_credit_balance: number;
   dodo_customer_id: string | null;
+
+  google_review_url: string | null;
+  google_rating: number | null;
+  google_rating_count: number | null;
+  google_rating_synced_at: string | null;
+  google_place_id: string | null;
+  google_cid: string | null;
 
   created_at: string;
 

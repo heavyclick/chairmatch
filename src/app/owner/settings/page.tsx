@@ -43,7 +43,7 @@ export default function OwnerSettingsPage() {
       </div>
 
       <Link
-        href="/onboarding/owner"
+        href="/owner/settings/edit"
         className="flex items-center justify-between rounded-xl border border-line p-4 hover:border-teal transition-colors mb-3"
       >
         <span className="text-[14px] font-semibold">Edit practice details</span>

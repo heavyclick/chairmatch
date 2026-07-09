@@ -59,9 +59,66 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("candidate_profiles")
     .select(
-      `*, role:roles(*), dealbreakers:candidate_dealbreakers(dealbreaker_tags(*)), software:candidate_software(software_tags(*))`
+      `*, role:roles(*), dealbreakers:candidate_dealbreakers(dealbreaker_tags(*)), software:candidate_software(software_tags(*))`,
+      { count: "exact" }
     )
     .eq("visibility_status", "actively_looking");
+
+  // ---- real radius search, finally ----
+  // candidate_profiles.location and practice_locations.location are
+  // PostGIS geography columns that have existed since the very first
+  // migration, with a working radius SQL function already built
+  // against them -- the only missing piece was ever actually writing
+  // coordinates into them (now done in /api/candidate/profile and
+  // /api/owner/profile) and ever actually calling that function (here).
+  //
+  // Only used when there's no explicit city/state override -- an
+  // owner who's manually typed a specific different city/state into
+  // the filter sheet is asking to search THERE, not "near me," so
+  // that case keeps using the text-based match below instead.
+  let radiusMatchedIds: string[] | null = null;
+  let fallbackCity: string | null = null;
+  let fallbackState: string | null = null;
+  if (!city && !state) {
+    const { data: hasLocation } = await supabase.rpc("practice_has_geocoded_location", {
+      practice_id_input: authUser.user.id,
+    });
+    if (hasLocation) {
+      const { data: withinRadius } = await supabase.rpc("candidates_within_radius_of_practice", {
+        practice_id_input: authUser.user.id,
+        radius_miles: Number(radiusMiles),
+      });
+      // Empty array (not null) signals "radius mode is active, use it"
+      // even if zero candidates matched -- distinct from radiusMatchedIds
+      // staying null, which means "no geocoded location, fall back."
+      radiusMatchedIds = (withinRadius ?? []).map((c: { id: string }) => c.id);
+    } else {
+      // BUG FIX: this used to fall through to no location filter at all
+      // once the practice wasn't geocoded -- the comment here claimed a
+      // "text-match fallback" that was never actually wired up, so an
+      // owner with an ungeocoded location (anyone who hasn't re-saved
+      // their profile since radius search shipped) saw every actively-
+      // looking candidate nationwide, completely unfiltered by
+      // location. Confirmed in testing: a San Jose practice saw 29
+      // Houston candidates with zero city/state filtering applied.
+      // Real fix: fetch the practice's OWN saved city/state directly
+      // (not the client-sent `city`/`state` params, which are only
+      // set when the owner manually types a filter override) and use
+      // that as the location filter below.
+      const { data: ownLocation } = await supabase
+        .from("practice_locations")
+        .select("city, state")
+        .eq("practice_id", authUser.user.id)
+        .eq("is_primary", true)
+        .maybeSingle();
+      fallbackCity = ownLocation?.city ?? null;
+      fallbackState = ownLocation?.state ?? null;
+    }
+  }
+
+  if (radiusMatchedIds) {
+    query = query.in("id", radiusMatchedIds);
+  }
 
   // Resolve role slug -> id BEFORE filtering, rather than filtering on
   // the embedded roles(*) resource directly (the bug described above).
@@ -104,15 +161,26 @@ export async function GET(request: NextRequest) {
   }
   if (city) {
     query = query.ilike("city", city);
+  } else if (fallbackCity) {
+    query = query.ilike("city", fallbackCity);
   }
   if (state) {
     query = query.ilike("state", state);
+  } else if (fallbackState) {
+    query = query.ilike("state", fallbackState);
   }
   if (zip) {
     query = query.eq("zip", zip);
   }
 
-  const { data: candidates, error } = await query.limit(50);
+  // { count: "exact" } above returns the TRUE total matching row count
+  // via Postgres's separate count mechanism, unaffected by .limit(50)
+  // below and NOT inflated by the one-to-many embedded resources
+  // (dealbreakers/software) -- PostgREST computes this against the
+  // base table's matching rows, not a naive SQL join product. Verify
+  // this assumption still holds if the select's embedded resources
+  // ever change shape.
+  const { data: candidates, error, count: totalCount } = await query.limit(50);
 
   if (error) {
     console.error("[/api/search] query failed:", error);
@@ -193,6 +261,21 @@ export async function GET(request: NextRequest) {
     filtered = filtered.filter((c) => !blockedIds.has(c.id));
   }
 
+  // Browse order is intentionally random, not chronological -- otherwise
+  // candidates who joined first permanently sit at the top (or bottom,
+  // depending on Postgres's default row order) of every owner's results
+  // forever, which isn't fair distribution. There was no .order() clause
+  // at all before this, so results came back in whatever order Postgres
+  // happened to return them in (commonly insertion order in practice) --
+  // not actually random, just unspecified and *looked* chronological.
+  // Re-shuffled per request rather than persisted, so it's genuinely
+  // different practice-to-practice and request-to-request, not just a
+  // fixed reordering everyone sees the same way.
+  for (let i = filtered.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+  }
+
   // ---- the actual paywall enforcement ----
   const results: (CandidateProfile | BlurredCandidateProfile)[] = filtered.map(
     (c) => {
@@ -209,7 +292,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     results,
-    count: results.length,
+    count: totalCount ?? results.length,
     tier,
   });
 }

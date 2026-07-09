@@ -18,6 +18,7 @@ export default function BrowsePage() {
   const [filters, setFilters] = useState<BrowseFilters>(DEFAULT_FILTERS);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [results, setResults] = useState<(CandidateProfile | BlurredCandidateProfile)[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [location, setLocation] = useState({ city: "your area", radiusMiles: 15 });
@@ -96,11 +97,15 @@ export default function BrowsePage() {
           throw new Error(data.error || "Couldn't load candidates.");
         }
         const data = await res.json();
-        if (!ignore) setResults(data.results ?? []);
+        if (!ignore) {
+          setResults(data.results ?? []);
+          setTotalCount(data.count ?? 0);
+        }
       } catch (err) {
         if (!ignore) {
           setError(err instanceof Error ? err.message : "Something went wrong.");
           setResults([]);
+          setTotalCount(0);
         }
       } finally {
         if (!ignore) setLoading(false);
@@ -129,7 +134,7 @@ export default function BrowsePage() {
           onLocationChange={handleLocationChange}
           stats={[
             {
-              count: loading ? null : results.length,
+              count: loading ? null : totalCount,
               label: tab === "full_time" ? "Full-time matches" : tab === "part_time" ? "Part-time matches" : "Temp matches",
             },
           ]}

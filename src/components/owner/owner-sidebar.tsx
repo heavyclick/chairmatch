@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { NavItem } from "@/components/owner/nav-item";
@@ -8,6 +8,42 @@ import { LogoutButton } from "@/components/shared/logout-button";
 
 export function OwnerSidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const [tier, setTier] = useState<string | null>(null);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [unreadAlertCount, setUnreadAlertCount] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/owner/profile/me")
+      .then((res) => res.json())
+      .then((data) => setTier(data.profile?.subscription_tier ?? "free"))
+      .catch(() => setTier("free"));
+
+    fetch("/api/messages")
+      .then((res) => res.json())
+      .then((data) => {
+        const threads: { is_unread: boolean }[] = data.threads ?? [];
+        setUnreadMessageCount(threads.filter((t) => t.is_unread).length);
+      })
+      .catch(() => {});
+
+    // Match-alert notifications are already written into the same
+    // `notifications` table the topbar bell reads from -- reusing that
+    // instead of a parallel counting system, just filtered to this one
+    // type. unreadByType is computed server-side from ALL unread
+    // notifications, not just the capped recent-20 list, so it's
+    // accurate regardless of notification volume.
+    fetch("/api/notifications")
+      .then((res) => res.json())
+      .then((data) => setUnreadAlertCount(data.unreadByType?.match_alert ?? 0))
+      .catch(() => {});
+  }, []);
+
+  // PAUSED (AI Pro tier): isPro is unused now that AI Tools/the upgrade
+  // card below are commented out, but the tier fetch above is left
+  // running and this computed alongside it so re-enabling Pro is just
+  // uncommenting the two blocks below, not rebuilding this from scratch.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const isPro = tier === "pro";
 
   return (
     <aside
@@ -37,11 +73,26 @@ export function OwnerSidebar() {
       <nav className="flex-1">
         <NavItem icon="Home" label="Dashboard" href="/owner/dashboard" collapsed={collapsed} />
         <NavItem icon="Search" label="Browse" href="/owner/browse" collapsed={collapsed} />
-        <NavItem icon="Star" label="Saved Searches" href="/owner/saved-searches" collapsed={collapsed} />
+        <NavItem icon="Star" label="Match Alerts" href="/owner/saved-searches" collapsed={collapsed} badgeCount={unreadAlertCount} />
         <NavItem icon="Users" label="Team Roster" href="/owner/roster" collapsed={collapsed} />
-        <NavItem icon="Mail" label="Messages" href="/owner/messages" collapsed={collapsed} />
-        <NavItem icon="Sparkles" label="AI Tools" locked collapsed={collapsed} />
+        <NavItem icon="Mail" label="Messages" href="/owner/messages" collapsed={collapsed} badgeCount={unreadMessageCount} />
+        {/* PAUSED (AI Pro tier): AI Search/Advisor/Screening are on hold
+            pending real demand. This nav item stays visible and
+            permanently locked with a "Soon" tag on purpose -- it signals
+            real, upcoming value rather than disappearing, per founder
+            decision -- but no longer reflects actual subscription_tier
+            (isPro is unused here now). When Pro ships for real, swap
+            `locked={!isPro}` and `href={isPro ? "/owner/ai-tools" : undefined}`
+            back in. */}
+        <NavItem
+          icon="Sparkles"
+          label="AI Tools"
+          locked
+          tag="Soon"
+          collapsed={collapsed}
+        />
         <NavItem icon="Clock" label="Hiring Activity" href="/owner/hiring-activity" collapsed={collapsed} />
+        <NavItem icon="LifeBuoy" label="Support" href="/owner/support" collapsed={collapsed} />
 
         {!collapsed && (
           <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[#6F837E] mt-6 mb-2 px-3.5">
@@ -52,11 +103,18 @@ export function OwnerSidebar() {
         <NavItem icon="DollarSign" label="Billing" href="/owner/settings/billing" collapsed={collapsed} />
       </nav>
 
-      {!collapsed && (
+      {/* PAUSED (AI Pro tier): this card linked to a real purchase flow
+          that no longer exists (checkout now rejects anything but
+          "standard") -- leaving it live would be a broken, misleading
+          CTA. The sidebar's "AI Tools" item above still carries the
+          aspirational "Soon" tag on its own, which is the intended
+          way to signal upcoming value without a dead button. Restore
+          this alongside re-enabling Pro in checkout/billing.
+      {!collapsed && !isPro && (
         <div className="rounded-[14px] bg-white/5 border border-white/10 p-4 mt-6">
           <p className="text-xs leading-relaxed text-[#A9BAB6] mb-3">
             Pro unlocks AI search, AI outreach, and screening credits — plus
-            risk flags Standard can&apos;t see.
+            risk flags Standard can't see.
           </p>
           <Link
             href="/owner/settings/billing"
@@ -66,6 +124,7 @@ export function OwnerSidebar() {
           </Link>
         </div>
       )}
+      */}
 
       <div className="mt-3 pt-3 border-t border-white/10">
         <LogoutButton />

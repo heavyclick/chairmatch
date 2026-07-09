@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { extractReviewerSignals, verifyTurnstileToken } from "@/lib/reviews/capture-signals";
 
 /**
  * POST /api/reviews/submit
@@ -8,14 +9,23 @@ import { createServiceClient } from "@/lib/supabase/server";
  * leaving a review has no Supabase session at all, so this route uses
  * the service-role client rather than the normal user-scoped one.
  *
- * Abuse controls, per founder decision (light-touch, not full email
- * verification): name + email captured but not verified via a click
- * link, one review per reviewer-email per candidate enforced by the
- * unique constraint on candidate_reviews(candidate_id, reviewer_email)
- * in migration 0003, plus a basic per-IP rate limit here. This is
- * intentionally NOT bulletproof -- it's calibrated to deter casual
- * abuse without adding enough friction to kill genuine review volume,
- * per the explicit tradeoff discussed with the founder.
+ * Abuse controls, current state:
+ *   - Cloudflare Turnstile CAPTCHA, verified server-side before
+ *     anything is inserted.
+ *   - A honeypot field (`website`) -- invisible to real users via CSS,
+ *     but visible to naive form-filling bots. Any non-empty value is
+ *     treated as a bot and rejected with a generic success-shaped
+ *     response (not an error) so as not to teach a bot what tripped it.
+ *   - Full reviewer signal capture (IP, coarse geolocation, device/
+ *     browser, language -- see src/lib/reviews/capture-signals.ts) for
+ *     later fraud-pattern analysis if a review gets flagged, not used
+ *     to block submission on its own.
+ *   - One review per reviewer-email per candidate (unique constraint,
+ *     migration 0003).
+ *   - Basic per-IP rate limit below.
+ * This is calibrated to meaningfully deter casual/scripted abuse
+ * without so much friction it kills genuine review volume -- not
+ * claiming to be unbeatable against a determined, resourced attacker.
  */
 
 // Extremely simple in-memory rate limit -- resets on server restart
@@ -35,8 +45,9 @@ function isRateLimited(ip: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  if (isRateLimited(ip)) {
+  const signals = extractReviewerSignals(request);
+
+  if (isRateLimited(signals.ip)) {
     return NextResponse.json(
       { error: "Too many reviews submitted recently. Please try again later." },
       { status: 429 }
@@ -44,7 +55,27 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { candidateId, reviewerName, reviewerEmail, rating, reviewText } = body;
+  const { candidateId, reviewerName, reviewerEmail, rating, reviewText, turnstileToken, website } = body;
+
+  // Honeypot: `website` is a field real users never see or fill (hidden
+  // off-screen in the form, not display:none -- some bots specifically
+  // skip display:none fields). Any bot naively filling every input it
+  // finds trips this. Returning a success-shaped response rather than
+  // an error avoids teaching the bot what tripped it.
+  if (typeof website === "string" && website.trim() !== "") {
+    return NextResponse.json({ success: true });
+  }
+
+  if (!turnstileToken) {
+    return NextResponse.json({ error: "Please complete the verification challenge." }, { status: 400 });
+  }
+  const turnstileVerified = await verifyTurnstileToken(turnstileToken, signals.ip);
+  if (!turnstileVerified) {
+    return NextResponse.json(
+      { error: "Verification failed. Please try again." },
+      { status: 400 }
+    );
+  }
 
   if (!candidateId || !reviewerName?.trim() || !reviewerEmail?.trim()) {
     return NextResponse.json({ error: "Name and email are required." }, { status: 400 });
@@ -75,6 +106,18 @@ export async function POST(request: NextRequest) {
     reviewer_email: reviewerEmail.trim().toLowerCase(),
     rating,
     review_text: reviewText?.trim() || null,
+    reviewer_ip: signals.ip,
+    reviewer_country: signals.country,
+    reviewer_region: signals.region,
+    reviewer_city: signals.city,
+    reviewer_latitude: signals.latitude,
+    reviewer_longitude: signals.longitude,
+    reviewer_user_agent: signals.userAgent,
+    reviewer_browser: signals.browser,
+    reviewer_os: signals.os,
+    reviewer_device_type: signals.deviceType,
+    reviewer_language: signals.language,
+    turnstile_verified: turnstileVerified,
   });
 
   if (error) {

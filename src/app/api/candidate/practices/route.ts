@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     .from("practice_profiles")
     .select(
       `id, practice_name, photo_url, specialty, culture_text, thrive_text,
-       google_rating, google_rating_count,
+       google_rating, google_rating_count, ai_practice_chips,
        locations:practice_locations(city, state)`
     )
     .limit(30);

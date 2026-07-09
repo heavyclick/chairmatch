@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { computeFraudSignals } from "@/lib/reviews/fraud-signals";
 
 /**
  * POST /api/reviews/flag
@@ -13,6 +14,13 @@ import { createClient } from "@/lib/supabase/server";
  * manual admin action (update candidate_review_flags.status and
  * candidate_reviews.is_visible directly in Supabase) -- no admin UI
  * exists yet, see README.
+ *
+ * Also builds a full evidence packet (migration 0008) -- the review's
+ * captured signals (IP, geo, device, CAPTCHA status) plus computed
+ * fraud-pattern signals -- stored on the flag itself so it survives
+ * even if the review is later edited/removed, and so whoever reviews
+ * the flag has real signal to work from instead of just the flagger's
+ * account of what happened.
  */
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -28,7 +36,11 @@ export async function POST(request: NextRequest) {
 
   // Confirm this review actually belongs to the flagging candidate's
   // own profile -- a candidate must not be able to flag someone else's
-  // reviews.
+  // reviews. Deliberately checked on the user-scoped client (not
+  // service-role) so this ownership check is still subject to normal
+  // RLS -- only reviewer_id/candidate_id are read here, not the PII
+  // columns, so the column-level revoke in migration 0008 doesn't
+  // affect this query at all.
   const { data: review } = await supabase
     .from("candidate_reviews")
     .select("id, candidate_id")
@@ -39,16 +51,54 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Review not found." }, { status: 404 });
   }
 
-  const { error: flagError } = await supabase.from("candidate_review_flags").insert({
+  // Everything from here on needs the service-role client -- both to
+  // read the PII columns revoked from `authenticated` in migration
+  // 0008, and to write candidate_reviews.reviewer_ip-adjacent data
+  // into the evidence packet.
+  const service = createServiceClient();
+
+  const { data: fullReview } = await service
+    .from("candidate_reviews")
+    .select(
+      "reviewer_email, reviewer_ip, reviewer_country, reviewer_region, reviewer_city, reviewer_latitude, reviewer_longitude, reviewer_user_agent, reviewer_browser, reviewer_os, reviewer_device_type, reviewer_language, turnstile_verified, created_at"
+    )
+    .eq("id", reviewId)
+    .single();
+
+  let evidence: Record<string, unknown> = { flaggerReason: reason.trim() };
+  if (fullReview) {
+    const fraudSignals = await computeFraudSignals(service, fullReview, authData.user.id);
+    evidence = {
+      flaggerReason: reason.trim(),
+      capturedAtSubmission: {
+        ip: fullReview.reviewer_ip,
+        country: fullReview.reviewer_country,
+        region: fullReview.reviewer_region,
+        city: fullReview.reviewer_city,
+        latitude: fullReview.reviewer_latitude,
+        longitude: fullReview.reviewer_longitude,
+        userAgent: fullReview.reviewer_user_agent,
+        browser: fullReview.reviewer_browser,
+        os: fullReview.reviewer_os,
+        deviceType: fullReview.reviewer_device_type,
+        language: fullReview.reviewer_language,
+        turnstileVerified: fullReview.turnstile_verified,
+      },
+      fraudSignals,
+    };
+  }
+
+  const { error: flagError } = await service.from("candidate_review_flags").insert({
     review_id: reviewId,
     flagged_by_candidate_id: authData.user.id,
     reason: reason.trim(),
+    evidence,
   });
   if (flagError) {
     return NextResponse.json({ error: flagError.message }, { status: 500 });
   }
 
-  await supabase.from("candidate_reviews").update({ is_visible: false }).eq("id", reviewId);
+  await service.from("candidate_reviews").update({ is_visible: false }).eq("id", reviewId);
 
   return NextResponse.json({ success: true });
 }

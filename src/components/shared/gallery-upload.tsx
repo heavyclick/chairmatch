@@ -43,21 +43,38 @@ export function GalleryUpload({ value, onChange, maxPhotos = 12 }: GalleryUpload
       if (!authData.user) throw new Error("Not signed in.");
 
       const uploaded: GalleryPhoto[] = [];
+      const failures: string[] = [];
       for (const file of filesToUpload) {
-        if (!file.type.startsWith("image/")) continue;
-        if (file.size > 5 * 1024 * 1024) continue;
+        if (!file.type.startsWith("image/")) {
+          failures.push(`${file.name}: not an image file`);
+          continue;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          failures.push(`${file.name}: over 5MB`);
+          continue;
+        }
 
         const ext = file.name.split(".").pop();
         const path = `${authData.user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const { error: uploadError } = await supabase.storage
           .from("practice-gallery")
           .upload(path, file);
-        if (uploadError) continue;
+        if (uploadError) {
+          failures.push(`${file.name}: ${uploadError.message}`);
+          continue;
+        }
 
         const { data: publicUrl } = supabase.storage.from("practice-gallery").getPublicUrl(path);
         uploaded.push({ photoUrl: publicUrl.publicUrl, caption: "" });
       }
       onChange([...value, ...uploaded]);
+      if (failures.length > 0) {
+        setError(
+          uploaded.length > 0
+            ? `${uploaded.length} photo(s) added. ${failures.length} failed: ${failures.join("; ")}`
+            : `Upload failed: ${failures.join("; ")}`
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed -- please try again.");
     } finally {

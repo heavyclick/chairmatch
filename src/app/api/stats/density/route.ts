@@ -6,9 +6,14 @@ import { createClient } from "@/lib/supabase/server";
  *
  * Returns live candidate counts by role within the owner's saved
  * radius -- the data behind the dashboard's "Active near you" hero.
- * Falls back to a city-only match if no lat/lng is available yet
- * (radius search requires geocoding the practice's zip on save,
- * which is a Phase 1 follow-up -- see README).
+ *
+ * Uses real PostGIS radius search (candidates_within_radius_of_practice,
+ * see migration 0015) when the practice's location has been geocoded
+ * -- geocoding happens automatically in /api/owner/profile whenever a
+ * practice's city/state/zip changes (see src/lib/geocoding/geocode.ts).
+ * Falls back to exact city-text matching for practices that haven't
+ * re-saved their location since this shipped, so existing behavior
+ * degrades gracefully rather than suddenly returning zero results.
  */
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -19,9 +24,27 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const city = searchParams.get("city");
+  const radiusMiles = Number(searchParams.get("radius_miles") ?? "15");
 
   const { data: roles } = await supabase.from("roles").select("id, slug, label");
   if (!roles) return NextResponse.json({ stats: [] });
+
+  // Resolve radius-matched candidate IDs once, shared across every
+  // role's count below, rather than re-running the spatial query once
+  // per role.
+  let radiusMatchedIds: string[] | null = null;
+  if (!city) {
+    const { data: hasLocation } = await supabase.rpc("practice_has_geocoded_location", {
+      practice_id_input: authData.user.id,
+    });
+    if (hasLocation) {
+      const { data: withinRadius } = await supabase.rpc("candidates_within_radius_of_practice", {
+        practice_id_input: authData.user.id,
+        radius_miles: radiusMiles,
+      });
+      radiusMatchedIds = (withinRadius ?? []).map((c: { id: string }) => c.id);
+    }
+  }
 
   const stats = await Promise.all(
     roles.map(async (role) => {
@@ -31,7 +54,11 @@ export async function GET(request: NextRequest) {
         .eq("primary_role_id", role.id)
         .eq("visibility_status", "actively_looking");
 
-      if (city) query = query.eq("city", city);
+      if (radiusMatchedIds) {
+        query = query.in("id", radiusMatchedIds);
+      } else if (city) {
+        query = query.eq("city", city);
+      }
 
       const { count } = await query;
       return { role: role.label, slug: role.slug, count: count ?? 0 };

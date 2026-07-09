@@ -8,20 +8,28 @@ interface PricingModalProps {
   onChoosePlan: (kind: "standard" | "pro") => void;
 }
 
-const PLANS = [
+const PLANS: {
+  kind: "standard" | "pro";
+  name: string;
+  price: string;
+  features: string[];
+  recommended?: boolean;
+}[] = [
   {
-    kind: "standard" as const,
+    kind: "standard",
     name: "Standard",
     price: "$100/yr",
     features: ["Unblur every name & photo", "Direct message any candidate", "Full filter access (already free)", "Interview question packs"],
   },
-  {
-    kind: "pro" as const,
-    name: "Pro",
-    price: "$250/yr",
-    recommended: true,
-    features: ["Everything in Standard", "AI natural-language search", "AI-assisted outreach (review before send)", "AI Hiring Advisor chat", "10 screening credits included"],
-  },
+  // PAUSED (AI Pro tier) -- see src/app/owner/settings/billing/page.tsx
+  // for the matching comment; re-enable both together.
+  // {
+  //   kind: "pro" as const,
+  //   name: "Pro",
+  //   price: "$250/yr",
+  //   recommended: true,
+  //   features: ["Everything in Standard", "AI natural-language search", "AI-assisted outreach (review before send)", "AI Hiring Advisor chat", "10 screening credits included"],
+  // },
 ];
 
 export function PricingModal({ open, onClose, onChoosePlan }: PricingModalProps) {
@@ -47,7 +55,7 @@ export function PricingModal({ open, onClose, onChoosePlan }: PricingModalProps)
           </button>
         </div>
 
-        <div className="px-6 py-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="px-6 py-5 grid grid-cols-1 gap-4 max-w-sm mx-auto w-full">
           {PLANS.map((plan) => (
             <div
               key={plan.kind}

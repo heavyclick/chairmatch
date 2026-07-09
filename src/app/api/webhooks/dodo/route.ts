@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "standardwebhooks";
 import { createServiceClient } from "@/lib/supabase/server";
+import { applyDodoEntitlement } from "@/lib/dodo/apply-entitlement";
+import type { CheckoutKind } from "@/lib/dodo/server";
 
 /**
  * POST /api/webhooks/dodo
@@ -62,54 +64,10 @@ export async function POST(request: NextRequest) {
     case "payment.succeeded":
     case "subscription.active": {
       if (!userId || !kind) break;
-
-      if (kind === "standard" || kind === "pro") {
-        await supabase
-          .from("practice_profiles")
-          .update({
-            subscription_tier: kind,
-            subscription_renews_at: new Date(Date.now() + 365 * 86400000).toISOString(),
-            dodo_customer_id: payload.data.customer_id ?? null,
-          })
-          .eq("id", userId);
-
-        if (kind === "pro") {
-          const { data: practice } = await supabase
-            .from("practice_profiles")
-            .select("screening_credit_balance")
-            .eq("id", userId)
-            .single();
-          if ((practice?.screening_credit_balance ?? 0) === 0) {
-            await supabase
-              .from("practice_profiles")
-              .update({ screening_credit_balance: 10 })
-              .eq("id", userId);
-          }
-        }
-      }
-
-      if (kind === "credits_10" || kind === "credits_25") {
-        const packSize = kind === "credits_10" ? 10 : 25;
-        const pricePaidCents = kind === "credits_10" ? 4500 : 10000;
-
-        const { data: practice } = await supabase
-          .from("practice_profiles")
-          .select("screening_credit_balance")
-          .eq("id", userId)
-          .single();
-
-        await supabase
-          .from("practice_profiles")
-          .update({ screening_credit_balance: (practice?.screening_credit_balance ?? 0) + packSize })
-          .eq("id", userId);
-
-        await supabase.from("screening_credit_purchases").insert({
-          owner_id: userId,
-          pack_size: packSize,
-          price_paid_cents: pricePaidCents,
-          dodo_payment_id: payload.data.payment_id ?? null,
-        });
-      }
+      await applyDodoEntitlement(supabase, userId, kind as CheckoutKind, {
+        dodoCustomerId: payload.data.customer_id,
+        dodoPaymentId: payload.data.payment_id,
+      });
       break;
     }
 

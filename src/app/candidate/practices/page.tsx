@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Search, MapPin, Star, EyeOff, Eye, Bell, Lock } from "lucide-react";
 import { US_STATES } from "@/lib/constants";
+import { SkillChips } from "@/components/shared/skill-chips";
 
 interface Practice {
   id: string;
@@ -14,6 +15,7 @@ interface Practice {
   thrive_text: string | null;
   google_rating: number | null;
   google_rating_count: number | null;
+  ai_practice_chips: string[] | null;
   locations?: { city: string; state: string }[];
 }
 
@@ -197,6 +199,11 @@ export default function CandidatePracticeBrowsePage() {
                       </>
                     )}
                   </p>
+                  {p.ai_practice_chips && p.ai_practice_chips.length > 0 && (
+                    <div className="mt-1.5">
+                      <SkillChips chips={p.ai_practice_chips} />
+                    </div>
+                  )}
                 </div>
               </Link>
               {p.google_rating != null && (

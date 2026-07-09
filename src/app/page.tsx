@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, UserRound, Check, X, Sparkles } from "lucide-react";
+import { Building2, UserRound, Check, X } from "lucide-react";
 
 export default function Home() {
   return (
@@ -104,7 +104,7 @@ export default function Home() {
         <p className="text-center text-ink-faint text-[14.5px] mb-10">
           Annual only. No surprise renewals.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
           <div className="rounded-2xl border border-line p-6">
             <h3 className="font-semibold text-[15px] mb-1">Free</h3>
             <p className="font-serif text-2xl font-semibold mb-4">$0</p>
@@ -123,6 +123,10 @@ export default function Home() {
               <li>Direct messaging</li>
             </ul>
           </div>
+          {/* PAUSED (AI Pro tier) -- AI Search/Advisor/Screening are on
+              hold pending real demand (see src/app/owner/settings/billing
+              /page.tsx for the full picture). Restore this card, and the
+              3-column grid above, together when Pro is re-enabled.
           <div className="relative rounded-2xl border-2 border-teal bg-teal-tint/30 p-6">
             <span className="absolute -top-3 left-5 bg-coral text-white text-[10.5px] font-bold px-2.5 py-1 rounded-full">
               Recommended
@@ -137,6 +141,7 @@ export default function Home() {
               <li>10 screening credits included</li>
             </ul>
           </div>
+          */}
         </div>
       </section>
 

@@ -1,0 +1,41 @@
+-- ============================================================
+-- Fix: candidates can't read ANY practice_profiles row.
+--
+-- The only policy on practice_profiles is "Owners manage own practice
+-- profile" (for all, using auth.uid() = id) -- from a practice owner's
+-- own account, that's fine. But it means a candidate (whose auth.uid()
+-- never matches any practice's id) gets zero rows back from any query
+-- against practice_profiles, silently, via RLS -- not an error, just an
+-- empty/null result. This is the root cause of three things at once:
+--
+--   1. The profile-view list showing "?" for the viewing practice --
+--      the embedded `practice:practice_profiles(...)` join in
+--      /api/candidate/profile-views/route.ts returns null per row
+--      because RLS strips it out.
+--   2. "Couldn't load this practice's profile" on the practice detail
+--      page -- /api/practice/[id]/route.ts's query returns no row, so
+--      the route 404s, for every practice, for every candidate.
+--   3. Candidate-side practice browsing (/api/candidate/practices)
+--      silently returning zero results for every candidate -- same
+--      cause, just hadn't been separately noticed/reported yet.
+--
+-- Fix: add a second, additive SELECT policy that lets any authenticated
+-- user read practice rows (RLS policies are OR'd together, so the
+-- existing owner policy is untouched -- owners still get full
+-- read/write on their own row via that one).
+--
+-- Trade-off worth knowing: this is row-level, not column-level, so it
+-- technically also makes billing columns (subscription_tier,
+-- screening_credit_balance, dodo_customer_id) readable by any logged-in
+-- user for ANY practice, not just their own. That's business metadata,
+-- not personal data, and Dodo's own customer ID isn't independently
+-- useful to anyone but this app's server -- low risk, but not zero. If
+-- that ever matters (e.g. competitors reading each other's plan tier),
+-- the real fix is a public-safe VIEW exposing only candidate-facing
+-- columns, with candidate-facing routes querying that view instead of
+-- the base table directly. Flagging it here rather than silently
+-- deciding it's fine forever.
+-- ============================================================
+create policy "Authenticated users can read practice profiles"
+  on public.practice_profiles for select
+  using (auth.role() = 'authenticated');

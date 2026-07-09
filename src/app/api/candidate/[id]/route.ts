@@ -28,7 +28,8 @@ export async function GET(
       `*, role:roles(*), work_history:candidate_work_history(*),
        dealbreakers:candidate_dealbreakers(dealbreaker_tags(*)),
        software:candidate_software(software_tags(*)),
-       alias_tags:candidate_role_aliases(role_aliases(*))`
+       alias_tags:candidate_role_aliases(role_aliases(*)),
+       availability:candidate_availability(*)`
     )
     .eq("id", id)
     .single();

@@ -30,24 +30,54 @@ export default async function OwnerDashboardPage() {
       }
     }
 
-    const { data: searches } = await supabase
-      .from("saved_searches")
+    const { data: alerts } = await supabase
+      .from("match_alerts")
       .select("id, label")
       .eq("owner_id", authData.user.id)
       .order("created_at", { ascending: false })
       .limit(6);
-    savedSearches = (searches ?? []).map((s) => ({ ...s, new_match_count: 0 }));
+
+    let matchCounts = new Map<string, number>();
+    if (alerts && alerts.length > 0) {
+      const { data: notifications } = await supabase
+        .from("match_alert_notifications")
+        .select("alert_id")
+        .in("alert_id", alerts.map((a) => a.id));
+      matchCounts = new Map();
+      for (const n of notifications ?? []) {
+        matchCounts.set(n.alert_id, (matchCounts.get(n.alert_id) ?? 0) + 1);
+      }
+    }
+    savedSearches = (alerts ?? []).map((a) => ({ ...a, new_match_count: matchCounts.get(a.id) ?? 0 }));
+
+    // Real radius search when this practice's location has been
+    // geocoded (candidates_within_radius_of_practice, migration 0015)
+    // -- previously this always matched on exact city text regardless
+    // of the radius value shown in the UI, which meant editing the
+    // radius control had zero actual effect on these numbers.
+    const { data: hasLocation } = await supabase.rpc("practice_has_geocoded_location", {
+      practice_id_input: authData.user.id,
+    });
+    let radiusMatchedIds: string[] | null = null;
+    if (hasLocation) {
+      const { data: withinRadius } = await supabase.rpc("candidates_within_radius_of_practice", {
+        practice_id_input: authData.user.id,
+        radius_miles: radiusMiles,
+      });
+      radiusMatchedIds = (withinRadius ?? []).map((c: { id: string }) => c.id);
+    }
 
     const { data: roles } = await supabase.from("roles").select("id, label");
     if (roles) {
       const counts = await Promise.all(
         roles.map(async (r) => {
-          const { count } = await supabase
+          let roleQuery = supabase
             .from("candidate_profiles")
             .select("id", { count: "exact", head: true })
             .eq("primary_role_id", r.id)
-            .eq("visibility_status", "actively_looking")
-            .eq("city", city);
+            .eq("visibility_status", "actively_looking");
+          roleQuery = radiusMatchedIds ? roleQuery.in("id", radiusMatchedIds) : roleQuery.eq("city", city);
+          const { count } = await roleQuery;
           return { label: r.label, count: count ?? 0 };
         })
       );
@@ -75,31 +105,31 @@ export default async function OwnerDashboardPage() {
       </div>
 
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-[15px] font-semibold">Saved searches</h2>
-        <Link href="/owner/browse" className="text-[13px] font-semibold text-teal-deep flex items-center gap-1">
-          New search <ArrowRight size={13} />
+        <h2 className="text-[15px] font-semibold">Match alerts</h2>
+        <Link href="/owner/saved-searches" className="text-[13px] font-semibold text-teal-deep flex items-center gap-1">
+          Manage alerts <ArrowRight size={13} />
         </Link>
       </div>
 
       {savedSearches.length === 0 ? (
         <div className="rounded-xl border border-dashed border-line p-6 text-center text-[13.5px] text-ink-faint mb-10">
-          No saved searches yet.{" "}
-          <Link href="/owner/browse" className="text-teal-deep font-semibold">
-            Start browsing
+          No active alerts yet.{" "}
+          <Link href="/owner/saved-searches" className="text-teal-deep font-semibold">
+            Create one
           </Link>{" "}
-          and save a search to get notified of new matches.
+          to get notified when a matching candidate joins.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-10">
           {savedSearches.map((s) => (
             <Link
               key={s.id}
-              href="/owner/browse"
+              href="/owner/saved-searches"
               className="rounded-xl border border-line bg-bg-raised p-4 hover:border-teal transition-colors block"
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <Star size={13} className="text-teal-deep" />
-                <span className="text-[14px] font-semibold">{s.label || "Saved search"}</span>
+                <span className="text-[14px] font-semibold">{s.label || "Match alert"}</span>
               </div>
             </Link>
           ))}

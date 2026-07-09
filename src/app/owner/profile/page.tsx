@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Stethoscope, Wrench, Pencil, Calendar, Star } from "lucide-react";
+import { ArrowLeft, MapPin, Stethoscope, Wrench, Pencil, Calendar, Star, RefreshCw } from "lucide-react";
 import { DAYS_OF_WEEK } from "@/lib/constants";
+import { SkillChips } from "@/components/shared/skill-chips";
 
 interface OwnerSelfProfile {
   practice_name: string;
@@ -18,6 +19,7 @@ interface OwnerSelfProfile {
   google_review_url: string | null;
   google_rating: number | null;
   google_rating_count: number | null;
+  ai_practice_chips: string[] | null;
   locations?: { city: string; state: string; zip: string; operating_hours?: { day: number; startTime: string; endTime: string }[] }[];
   software?: { software_tags: { label: string } }[];
   gallery?: { id: string; photo_url: string; caption: string | null }[];
@@ -26,6 +28,9 @@ interface OwnerSelfProfile {
 export default function OwnerSelfViewPage() {
   const [profile, setProfile] = useState<OwnerSelfProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [ratingError, setRatingError] = useState<string | null>(null);
+  const [ratingCaution, setRatingCaution] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/owner/profile/me")
@@ -33,6 +38,36 @@ export default function OwnerSelfViewPage() {
       .then((data) => setProfile(data.profile))
       .finally(() => setLoading(false));
   }, []);
+
+  async function refreshRating() {
+    setRefreshing(true);
+    setRatingError(null);
+    setRatingCaution(null);
+    try {
+      const res = await fetch("/api/owner/sync-google-rating", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setRatingError(data.error || "Couldn't fetch your rating.");
+        return;
+      }
+      setProfile((prev) =>
+        prev
+          ? { ...prev, google_rating: data.rating, google_rating_count: data.ratingCount }
+          : prev
+      );
+      // "name_only" means we couldn't verify this against an exact
+      // place ID or GPS coordinates from your review link -- it's our
+      // best text-search guess, not a confirmed match. Surfacing this
+      // honestly rather than presenting every match as equally certain.
+      if (data.confidence === "name_only") {
+        setRatingCaution(
+          `Matched "${data.matchedName}"${data.matchedAddress ? ` at ${data.matchedAddress}` : ""} by name search -- we couldn't verify this against your exact listing. Double-check this is really your practice.`
+        );
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   if (loading) {
     return <div className="max-w-2xl mx-auto px-5 py-16 text-center text-ink-faint">Loading…</div>;
@@ -90,19 +125,45 @@ export default function OwnerSelfViewPage() {
           <span className="inline-block mt-2 text-[11px] font-bold uppercase tracking-wide bg-line-soft px-2.5 py-1 rounded-md capitalize">
             {profile.subscription_tier} plan
           </span>
-          {profile.google_rating != null && (
-            <a
-              href={profile.google_review_url ?? undefined}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 ml-2 text-[12.5px] font-semibold text-ink"
+          {profile.google_rating != null ? (
+            <span className="inline-flex items-center gap-1 ml-2 text-[12.5px] font-semibold text-ink">
+              <a
+                href={profile.google_review_url ?? undefined}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1"
+              >
+                <Star size={13} className="text-gold fill-gold" />
+                {profile.google_rating.toFixed(1)}
+                <span className="text-ink-faint font-normal">
+                  ({profile.google_rating_count ?? 0} Google reviews)
+                </span>
+              </a>
+              <button
+                onClick={refreshRating}
+                disabled={refreshing}
+                title="Refresh from Google"
+                className="text-ink-faint hover:text-teal-deep disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
+              </button>
+            </span>
+          ) : profile.google_review_url ? (
+            <button
+              onClick={refreshRating}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1.5 ml-2 text-[12.5px] font-medium text-teal-deep disabled:opacity-50"
             >
-              <Star size={13} className="text-gold fill-gold" />
-              {profile.google_rating.toFixed(1)}
-              <span className="text-ink-faint font-normal">
-                ({profile.google_rating_count ?? 0} Google reviews)
-              </span>
-            </a>
+              <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
+              {refreshing ? "Fetching rating…" : "Fetch Google rating"}
+            </button>
+          ) : null}
+          {ratingError && <p className="text-[12px] text-coral mt-1">{ratingError}</p>}
+          {ratingCaution && <p className="text-[12px] text-amber-700 mt-1">{ratingCaution}</p>}
+          {profile.ai_practice_chips && profile.ai_practice_chips.length > 0 && (
+            <div className="mt-2">
+              <SkillChips chips={profile.ai_practice_chips} />
+            </div>
           )}
         </div>
       </div>

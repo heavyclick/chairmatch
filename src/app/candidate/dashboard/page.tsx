@@ -151,12 +151,6 @@ export default async function CandidateDashboardPage() {
             <User size={15} /> View your full profile
           </Link>
           <Link
-            href="/candidate/browse-preview"
-            className="flex items-center justify-center gap-2 w-full text-center border border-line font-semibold text-[14.5px] py-3.5 rounded-control hover:border-teal transition-colors mb-3"
-          >
-            <Eye size={15} /> See it from a practice&apos;s side
-          </Link>
-          <Link
             href="/candidate/messages"
             className="block w-full text-center bg-teal text-white font-semibold text-[14.5px] py-3.5 rounded-control hover:bg-teal-deep transition-colors mb-3"
           >

@@ -7,6 +7,7 @@ import { Lock, MapPin, GraduationCap, Plane, Star, MessageSquare } from "lucide-
 import type { CandidateProfile, BlurredCandidateProfile } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { PricingModal } from "@/components/shared/pricing-modal";
+import { SkillChips } from "@/components/shared/skill-chips";
 
 type CardProps = {
   candidate: CandidateProfile | BlurredCandidateProfile;
@@ -29,7 +30,9 @@ function initials(name: string) {
 
 export function CandidateCard({ candidate }: CardProps) {
   const router = useRouter();
-  const [messaging, setMessaging] = useState(false);
+  const [shortlisting, setShortlisting] = useState(false);
+  const [onRoster, setOnRoster] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
   const [pricingOpen, setPricingOpen] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const locked = isLocked(candidate);
@@ -40,24 +43,31 @@ export function CandidateCard({ candidate }: CardProps) {
         }`
       : null;
 
-  async function handleMessage(e: React.MouseEvent) {
+  function handleMessage(e: React.MouseEvent) {
     e.preventDefault();
-    setMessaging(true);
+    router.push(`/owner/messages/new/${candidate.id}`);
+  }
+
+  async function handleShortlist(e: React.MouseEvent) {
+    e.preventDefault();
+    setShortlisting(true);
+    setMessageError(null);
     try {
-      const res = await fetch("/api/messages", {
+      const res = await fetch("/api/owner/roster", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          candidateId: candidate.id,
-          body: "Hi! I'd love to learn more about your background.",
-        }),
+        body: JSON.stringify({ candidateId: candidate.id }),
       });
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
-        router.push(`/owner/messages/${data.threadId}`);
+        setOnRoster(true);
+      } else {
+        setMessageError(data.error || "Couldn't add to shortlist.");
       }
+    } catch {
+      setMessageError("Couldn't reach the server. Please try again.");
     } finally {
-      setMessaging(false);
+      setShortlisting(false);
     }
   }
 
@@ -121,6 +131,12 @@ export function CandidateCard({ candidate }: CardProps) {
         </div>
       </div>
 
+      {candidate.ai_skill_chips && candidate.ai_skill_chips.length > 0 && (
+        <div className="mb-3.5">
+          <SkillChips chips={candidate.ai_skill_chips} />
+        </div>
+      )}
+
       <div className="flex gap-3.5 text-xs text-ink-faint mb-3.5">
         {candidate.city && (
           <span className="flex items-center gap-1">
@@ -161,21 +177,25 @@ export function CandidateCard({ candidate }: CardProps) {
           </button>
         ) : (
           <>
-            <button className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-control text-sm font-semibold border border-line hover:border-teal hover:text-teal-deep transition">
-              <Star size={13} />
-              Shortlist
+            <button
+              onClick={handleShortlist}
+              disabled={shortlisting || onRoster}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-control text-sm font-semibold border border-line hover:border-teal hover:text-teal-deep transition disabled:opacity-70"
+            >
+              <Star size={13} className={onRoster ? "fill-teal-deep text-teal-deep" : ""} />
+              {onRoster ? "Shortlisted" : shortlisting ? "Adding…" : "Shortlist"}
             </button>
             <button
               onClick={handleMessage}
-              disabled={messaging}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-control text-sm font-semibold bg-teal text-white hover:bg-teal-deep transition disabled:opacity-60"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-control text-sm font-semibold bg-teal text-white hover:bg-teal-deep transition"
             >
               <MessageSquare size={13} />
-              {messaging ? "Opening…" : "Message"}
+              Message
             </button>
           </>
         )}
       </div>
+      {messageError && <p className="text-[12px] text-coral-deep mt-2">{messageError}</p>}
 
       <PricingModal
         open={pricingOpen}

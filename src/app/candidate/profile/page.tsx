@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, MapPin, GraduationCap, Plane, Home as HomeIcon, Briefcase,
-  Wrench, Heart, ShieldAlert, Pencil, Calendar, Share2, Copy, Check,
+  Wrench, Pencil, Calendar, Share2, Copy, Check, X,
 } from "lucide-react";
 import { DAYS_OF_WEEK } from "@/lib/constants";
-import { ReviewSummaryAndList, type ReviewItem } from "@/components/shared/review-list";
+import { ReviewRatingSummary, ReviewList, type ReviewItem } from "@/components/shared/review-list";
+import { CompanyFavicon } from "@/components/shared/company-favicon";
+import { SkillChips } from "@/components/shared/skill-chips";
+import { CandidatePedigree } from "@/components/shared/candidate-pedigree";
 
 interface SelfProfile {
   id: string;
@@ -29,6 +32,7 @@ interface SelfProfile {
   ce_courses: string[];
   skills: string[];
   hobbies: string[];
+  ai_skill_chips: string[] | null;
   value_add_text: string | null;
   future_goals_text: string | null;
   recovery_scenario_text: string | null;
@@ -43,6 +47,14 @@ interface SelfProfile {
 
 function initials(name: string) {
   return name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function formatTime(t: string) {
+  return t.slice(0, 5);
+}
+
+function formatDateRange(start: string | null, end: string | null) {
+  return `${start ?? ""} – ${end || "Present"}`;
 }
 
 export default function CandidateSelfViewPage() {
@@ -148,7 +160,10 @@ export default function CandidateSelfViewPage() {
         </button>
       </div>
 
-      <div className="flex gap-4 items-start mb-6 mt-6">
+      {/* Header -- restructured to match the owner-facing redesign:
+          name/role, then rating summary right in the header rather
+          than buried near the bottom. */}
+      <div className="flex gap-4 items-start mb-4 mt-6">
         <div className="w-16 h-16 rounded-full overflow-hidden bg-gradient-to-br from-teal to-teal-deep flex items-center justify-center shrink-0">
           {profile.photo_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -159,8 +174,35 @@ export default function CandidateSelfViewPage() {
         </div>
         <div className="flex-1 pt-1">
           <h1 className="font-serif text-2xl font-bold mb-1">{profile.full_name}</h1>
-          <p className="text-[15px] text-ink-faint">{profile.role?.label}</p>
-          <div className="flex gap-2 mt-2 flex-wrap">
+          <p className="text-[15px] text-ink-faint mb-1.5">{profile.role?.label}</p>
+          <ReviewRatingSummary averageRating={averageRating} reviewCount={reviews.length} />
+        </div>
+      </div>
+
+      {/* Above-the-fold summary strip -- dealbreakers, AI standout
+          chips, and relocation/remote status, matching the exact same
+          placement principle as the owner-facing redesign: this is
+          what a practice sees FIRST, so it's what you should see
+          first reviewing your own profile too, not buried after
+          several paragraphs of text. */}
+      {(profile.dealbreakers?.length ?? 0) > 0 ||
+      (profile.ai_skill_chips?.length ?? 0) > 0 ||
+      profile.open_to_relocation ||
+      profile.open_to_remote ? (
+        <div className="space-y-2.5 mb-5">
+          {profile.dealbreakers && profile.dealbreakers.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {profile.dealbreakers.map((d, i) => (
+                <span
+                  key={i}
+                  className="flex items-center gap-1.5 text-[12.5px] font-medium text-coral-deep bg-coral/10 px-3 py-1.5 rounded-full"
+                >
+                  <X size={11} /> {d.dealbreaker_tags.label}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5">
             {profile.open_to_relocation && (
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-deep bg-teal-tint px-2.5 py-1 rounded-md">
                 <Plane size={11} /> Open to relocation
@@ -171,9 +213,10 @@ export default function CandidateSelfViewPage() {
                 <HomeIcon size={11} /> Open to remote
               </span>
             )}
+            <SkillChips chips={profile.ai_skill_chips} />
           </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="flex gap-5 text-[13.5px] text-ink-faint mb-5">
         <span className="flex items-center gap-1.5"><MapPin size={14} /> {profile.city}, {profile.state}</span>
@@ -188,25 +231,25 @@ export default function CandidateSelfViewPage() {
         {profile.value_add_text && (
           <div className="rounded-2xl bg-line-soft border-l-4 border-gold p-5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint mb-2">What you bring</p>
-            <p className="text-[15.5px] leading-relaxed text-ink">{profile.value_add_text}</p>
+            <p className="text-[15.5px] leading-relaxed text-ink whitespace-pre-wrap">{profile.value_add_text}</p>
           </div>
         )}
         {profile.recovery_scenario_text && (
           <div className="rounded-2xl bg-teal-tint border-l-4 border-teal p-5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-deep mb-2">Your recovery plan</p>
-            <p className="text-[15.5px] leading-relaxed text-ink">{profile.recovery_scenario_text}</p>
+            <p className="text-[15.5px] leading-relaxed text-ink whitespace-pre-wrap">{profile.recovery_scenario_text}</p>
           </div>
         )}
         {profile.ideal_practice_text && (
           <div className="rounded-2xl border border-line p-5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint mb-2">Your ideal practice</p>
-            <p className="text-[14.5px] leading-relaxed text-ink">{profile.ideal_practice_text}</p>
+            <p className="text-[14.5px] leading-relaxed text-ink whitespace-pre-wrap">{profile.ideal_practice_text}</p>
           </div>
         )}
         {profile.future_goals_text && (
           <div className="rounded-2xl border border-line p-5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint mb-2">Where you want to be in 2 years</p>
-            <p className="text-[14.5px] leading-relaxed text-ink">{profile.future_goals_text}</p>
+            <p className="text-[14.5px] leading-relaxed text-ink whitespace-pre-wrap">{profile.future_goals_text}</p>
           </div>
         )}
       </div>
@@ -219,71 +262,60 @@ export default function CandidateSelfViewPage() {
           <div className="flex flex-wrap gap-2">
             {profile.availability.map((a, i) => (
               <span key={i} className="text-[12.5px] bg-line-soft px-2.5 py-1.5 rounded-lg">
-                {DAYS_OF_WEEK.find((d) => d.value === a.day_of_week)?.label} {a.start_time}–{a.end_time}
+                {DAYS_OF_WEEK.find((d) => d.value === a.day_of_week)?.label} {formatTime(a.start_time)}–{formatTime(a.end_time)}
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {profile.dealbreakers && profile.dealbreakers.length > 0 && (
-        <div className="mb-8">
-          <p className="text-[13px] font-semibold text-ink-soft mb-2.5 flex items-center gap-1.5">
-            <ShieldAlert size={13} /> Dealbreakers
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {profile.dealbreakers.map((d, i) => (
-              <span key={i} className="text-[12.5px] font-medium text-coral-deep bg-coral/10 px-3 py-1.5 rounded-full">
-                {d.dealbreaker_tags.label}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
+      {/* Work history -- threaded timeline with employer favicons,
+          matching the owner-facing redesign exactly rather than the
+          flat list this page had before. */}
       {profile.work_history && profile.work_history.length > 0 && (
         <div className="mb-8">
-          <p className="text-[13px] font-semibold text-ink-soft mb-3 flex items-center gap-1.5">
+          <p className="text-[13px] font-semibold text-ink-soft mb-4 flex items-center gap-1.5">
             <Briefcase size={13} /> Work history
           </p>
-          <div className="space-y-3">
-            {profile.work_history.map((w, i) => (
-              <div key={i} className="text-[14px]">
-                <div className="flex justify-between">
-                  <span className="font-semibold">{w.employer_name}</span>
-                  <span className="text-ink-faint text-[13px]">{w.start_date} – {w.end_date || "Present"}</span>
+          <div className="relative pl-1">
+            <div className="absolute left-[19px] top-2 bottom-2 w-px bg-line" aria-hidden="true" />
+            <div className="space-y-5">
+              {profile.work_history.map((w, i) => (
+                <div key={i} className="relative flex gap-3.5">
+                  <div className="relative z-10 bg-bg">
+                    <CompanyFavicon url={w.company_website} size={22} />
+                  </div>
+                  <div className="flex-1 min-w-0 pb-0.5">
+                    <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                      <span className="font-semibold text-[14px]">{w.employer_name}</span>
+                      <span className="text-ink-faint text-[12.5px] shrink-0">
+                        {formatDateRange(w.start_date, w.end_date)}
+                      </span>
+                    </div>
+                    {w.role_title && <p className="text-ink-faint text-[13px]">{w.role_title}</p>}
+                  </div>
                 </div>
-                {w.role_title && <p className="text-ink-faint text-[13px]">{w.role_title}</p>}
-                {w.company_website && (
-                  <a href={w.company_website} target="_blank" rel="noreferrer" className="text-teal-deep text-[12.5px]">
-                    {w.company_website}
-                  </a>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-        {(profile.certifications?.length > 0 || profile.ce_courses?.length > 0 || profile.university || profile.skills?.length > 0) && (
-          <div>
-            <p className="text-[13px] font-semibold text-ink-soft mb-2.5 flex items-center gap-1.5">
-              <GraduationCap size={13} /> Education & skills
-            </p>
-            <ul className="text-[14px] text-ink space-y-1">
-              {profile.university && <li>{profile.university}</li>}
-              {profile.skills?.map((s, i) => <li key={`s-${i}`}>{s}</li>)}
-              {profile.certifications?.map((c, i) => <li key={`c-${i}`}>{c}</li>)}
-              {profile.ce_courses?.map((c, i) => <li key={`ce-${i}`}>{c}</li>)}
-            </ul>
-          </div>
-        )}
-
+      {/* Skills / hobbies / certifications / CE courses / education --
+          shared component, same as the owner-facing redesign, instead
+          of this page's own separate ad-hoc flat lists. */}
+      <div className="mb-10 space-y-6">
+        <CandidatePedigree
+          university={profile.university}
+          certifications={profile.certifications ?? []}
+          ceCourses={profile.ce_courses ?? []}
+          skills={profile.skills ?? []}
+          hobbies={profile.hobbies ?? []}
+        />
         {profile.software && profile.software.length > 0 && (
           <div>
-            <p className="text-[13px] font-semibold text-ink-soft mb-2.5 flex items-center gap-1.5">
-              <Wrench size={13} /> Software
+            <p className="text-[12px] font-semibold text-ink-soft mb-2 flex items-center gap-1.5">
+              <Wrench size={12} /> Software
             </p>
             <div className="flex flex-wrap gap-1.5">
               {profile.software.map((s, i) => (
@@ -292,24 +324,11 @@ export default function CandidateSelfViewPage() {
             </div>
           </div>
         )}
-
-        {profile.hobbies && profile.hobbies.length > 0 && (
-          <div>
-            <p className="text-[13px] font-semibold text-ink-soft mb-2.5 flex items-center gap-1.5">
-              <Heart size={13} /> Hobbies & interests
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {profile.hobbies.map((h, i) => (
-                <span key={i} className="text-[12.5px] bg-line-soft px-2.5 py-1 rounded-md">{h}</span>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="pt-2 border-t border-line">
         <p className="text-[13px] font-semibold text-ink-soft mb-4 mt-6">Reviews</p>
-        <ReviewSummaryAndList reviews={reviews} averageRating={averageRating} allowFlagging />
+        <ReviewList reviews={reviews} allowFlagging />
       </div>
     </div>
   );

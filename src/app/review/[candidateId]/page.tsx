@@ -1,9 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Script from "next/script";
 import { Star, Loader2 } from "lucide-react";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: { sitekey: string; callback: (token: string) => void; "expired-callback"?: () => void }
+      ) => string;
+      reset: (widgetId: string) => void;
+    };
+  }
+}
 
 interface PublicCandidate {
   id: string;
@@ -49,9 +62,46 @@ export default function PublicCandidateReviewPage() {
   const [email, setEmail] = useState("");
   const [rating, setRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
+  const [website, setWebsite] = useState(""); // honeypot -- real users never see or fill this
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileContainerRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+
+  // Renders the Turnstile widget once the form is shown and the
+  // Cloudflare script has loaded -- can't render it immediately on
+  // page load since the container it mounts into doesn't exist until
+  // showForm is true.
+  useEffect(() => {
+    if (!showForm || !turnstileContainerRef.current || turnstileWidgetId.current) return;
+    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+    if (!siteKey) return;
+
+    function tryRender() {
+      if (window.turnstile && turnstileContainerRef.current && !turnstileWidgetId.current) {
+        turnstileWidgetId.current = window.turnstile.render(turnstileContainerRef.current, {
+          sitekey: siteKey!,
+          callback: (token) => setTurnstileToken(token),
+          "expired-callback": () => setTurnstileToken(null),
+        });
+      }
+    }
+    // The Cloudflare script may still be loading -- poll briefly
+    // rather than assuming it's ready the instant showForm flips true.
+    if (window.turnstile) {
+      tryRender();
+    } else {
+      const interval = setInterval(() => {
+        if (window.turnstile) {
+          tryRender();
+          clearInterval(interval);
+        }
+      }, 200);
+      return () => clearInterval(interval);
+    }
+  }, [showForm]);
 
   useEffect(() => {
     fetch(`/api/reviews/${params.candidateId}`)
@@ -74,6 +124,10 @@ export default function PublicCandidateReviewPage() {
       setSubmitError("Please select a star rating.");
       return;
     }
+    if (!turnstileToken) {
+      setSubmitError("Please complete the verification challenge below.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -86,6 +140,8 @@ export default function PublicCandidateReviewPage() {
           reviewerEmail: email,
           rating,
           reviewText,
+          turnstileToken,
+          website, // honeypot -- always empty for real users
         }),
       });
       const data = await res.json();
@@ -94,6 +150,12 @@ export default function PublicCandidateReviewPage() {
       setShowForm(false);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Something went wrong.");
+      // A failed/expired verification needs a fresh token -- reset the
+      // widget so the next attempt doesn't reuse a dead token.
+      if (turnstileWidgetId.current && window.turnstile) {
+        window.turnstile.reset(turnstileWidgetId.current);
+        setTurnstileToken(null);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -113,6 +175,7 @@ export default function PublicCandidateReviewPage() {
 
   return (
     <div className="min-h-screen bg-bg">
+      <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
       <div className="max-w-lg mx-auto px-5 py-10">
         <div className="flex items-center gap-2 justify-center mb-8">
           <span className="w-2 h-2 rounded-full bg-coral" />
@@ -194,6 +257,17 @@ export default function PublicCandidateReviewPage() {
               rows={3}
               className="w-full px-4 py-3 rounded-control border border-line bg-bg-raised text-[14px] outline-none focus:border-teal resize-none"
             />
+            {/* Honeypot -- invisible to real users (off-screen, not display:none), left unfilled by them; a bot filling every input it finds trips this. Not a real field labeled to a screen reader either. */}
+            <input
+              type="text"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }}
+            />
+            <div ref={turnstileContainerRef} />
             {submitError && <p className="text-[13px] text-coral-deep">{submitError}</p>}
             <button
               type="submit"

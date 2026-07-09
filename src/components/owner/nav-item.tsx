@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Star, Mail, Sparkles, Clock, Settings, DollarSign, Lock, Users } from "lucide-react";
+import { Home, Search, Star, Mail, Sparkles, Clock, Settings, DollarSign, Lock, Users, LifeBuoy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const ICONS = { Home, Search, Star, Mail, Sparkles, Clock, Settings, DollarSign, Users };
+const ICONS = { Home, Search, Star, Mail, Sparkles, Clock, Settings, DollarSign, Users, LifeBuoy };
 
 interface NavItemProps {
   icon: keyof typeof ICONS;
@@ -13,9 +13,12 @@ interface NavItemProps {
   href?: string;
   locked?: boolean;
   collapsed?: boolean;
+  badgeCount?: number;
+  /** Small text tag next to the label, e.g. "Soon" -- distinct from badgeCount (an unread-count bubble). Only rendered when expanded; collapsed mode has no room for it. */
+  tag?: string;
 }
 
-export function NavItem({ icon, label, href, locked, collapsed }: NavItemProps) {
+export function NavItem({ icon, label, href, locked, collapsed, badgeCount, tag }: NavItemProps) {
   const pathname = usePathname();
   const active = href ? pathname === href || pathname.startsWith(href + "/") : false;
   const Icon = ICONS[icon];
@@ -28,13 +31,29 @@ export function NavItem({ icon, label, href, locked, collapsed }: NavItemProps) 
     locked && "text-[#B9C6C2]/45 cursor-default"
   );
 
+  const badge =
+    badgeCount && badgeCount > 0 ? (
+      <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-coral text-white text-[10.5px] font-bold flex items-center justify-center shrink-0">
+        {badgeCount > 9 ? "9+" : badgeCount}
+      </span>
+    ) : null;
+
   const content = (
     <>
-      <Icon size={17} strokeWidth={2} className="shrink-0" />
+      <span className="relative shrink-0">
+        <Icon size={17} strokeWidth={2} />
+        {collapsed && badge && <span className="absolute -top-1.5 -right-1.5">{badge}</span>}
+      </span>
       {!collapsed && (
         <>
           <span className="flex-1">{label}</span>
+          {tag && (
+            <span className="text-[9.5px] font-bold uppercase tracking-wide text-[#B9C6C2]/70 bg-white/5 px-1.5 py-0.5 rounded-full">
+              {tag}
+            </span>
+          )}
           {locked && <Lock size={12} className="opacity-70" />}
+          {!locked && badge}
         </>
       )}
     </>

@@ -5,10 +5,14 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, MapPin, GraduationCap, Plane, Lock, Star,
-  MessageSquare, Sparkles, Briefcase, GraduationCap as CapIcon, X,
+  MessageSquare, Sparkles, Briefcase, X, Calendar,
 } from "lucide-react";
+import { DAYS_OF_WEEK } from "@/lib/constants";
 import { PricingModal } from "@/components/shared/pricing-modal";
-import { ReviewSummaryAndList, type ReviewItem } from "@/components/shared/review-list";
+import { ReviewRatingSummary, ReviewList, type ReviewItem } from "@/components/shared/review-list";
+import { SkillChips } from "@/components/shared/skill-chips";
+import { CandidatePedigree } from "@/components/shared/candidate-pedigree";
+import { CompanyFavicon } from "@/components/shared/company-favicon";
 
 interface DetailCandidate {
   id: string;
@@ -26,17 +30,32 @@ interface DetailCandidate {
   value_add_text: string | null;
   future_goals_text: string | null;
   recovery_scenario_text: string | null;
+  ideal_practice_text: string | null;
   university: string | null;
   certifications: string[];
   ce_courses: string[];
+  skills: string[];
+  hobbies: string[];
+  ai_skill_chips: string[] | null;
   role?: { label: string };
-  work_history?: { employer_name: string; role_title: string | null; start_date: string | null; end_date: string | null }[];
+  work_history?: {
+    employer_name: string;
+    role_title: string | null;
+    company_website: string | null;
+    start_date: string | null;
+    end_date: string | null;
+  }[];
   dealbreakers?: { dealbreaker_tags: { label: string } }[];
   software?: { software_tags: { label: string } }[];
+  availability?: { day_of_week: number; start_time: string; end_time: string }[];
 }
 
 function initials(name: string) {
   return name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function formatTime(t: string) {
+  return t.slice(0, 5);
 }
 
 function formatDateRange(start: string | null, end: string | null) {
@@ -48,27 +67,19 @@ export default function CandidateDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [candidate, setCandidate] = useState<DetailCandidate | null>(null);
+  // PAUSED (AI Pro tier): tier is fetched but no longer read anywhere
+  // live now that the AI Screen button below is a plain coming-soon
+  // indicator -- kept (rather than removed) so re-enabling AI
+  // Screening later doesn't require re-adding this fetch from scratch.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [tier, setTier] = useState<string>("free");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [messaging, setMessaging] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
 
-  async function handleMessage() {
-    setMessaging(true);
-    try {
-      const res = await fetch("/api/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidateId: params.id, body: "Hi! I'd love to learn more about your background." }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        router.push(`/owner/messages/${data.threadId}`);
-      }
-    } finally {
-      setMessaging(false);
-    }
+  function handleMessage() {
+    router.push(`/owner/messages/new/${params.id}`);
   }
 
   async function handleChoosePlan(kind: "standard" | "pro") {
@@ -125,7 +136,10 @@ export default function CandidateDetailPage() {
         }
         return res.json();
       })
-      .then((data) => setCandidate(data.candidate))
+      .then((data) => {
+        setCandidate(data.candidate);
+        setTier(data.tier ?? "free");
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
 
@@ -176,7 +190,7 @@ export default function CandidateDetailPage() {
       </Link>
 
       {/* Header */}
-      <div className="flex gap-4 items-start mb-6">
+      <div className="flex gap-4 items-start mb-4">
         <div className="relative shrink-0">
           <div
             className={`w-16 h-16 rounded-full flex items-center justify-center font-serif text-xl text-white ${
@@ -195,14 +209,45 @@ export default function CandidateDetailPage() {
           <h1 className={`font-serif text-2xl font-semibold mb-1 ${locked ? "locked-text" : ""}`}>
             {locked ? "█████ ████" : candidate.full_name}
           </h1>
-          <p className="text-[15px] text-ink-faint">{candidate.role?.label}</p>
-          {candidate.open_to_relocation && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-deep bg-teal-tint px-2.5 py-1 rounded-md mt-2">
-              <Plane size={11} /> Open to relocation
-            </span>
-          )}
+          <p className="text-[15px] text-ink-faint mb-1.5">{candidate.role?.label}</p>
+          <ReviewRatingSummary averageRating={averageRating} reviewCount={reviews.length} />
         </div>
       </div>
+
+      {/* Above-the-fold summary strip -- dealbreakers, AI standout
+          chips, and relocation status all live here, right under the
+          header, before anything else. Moved up from where they used
+          to sit (dealbreakers were previously below several paragraphs
+          of text) specifically so a practice sees a hard "no" before
+          spending time reading the rest of the profile, per the
+          original complaint that reading everything only to hit a
+          dealbreaker at the end wastes the reader's time. */}
+      {((candidate.dealbreakers && candidate.dealbreakers.length > 0) ||
+        (candidate.ai_skill_chips && candidate.ai_skill_chips.length > 0) ||
+        candidate.open_to_relocation) && (
+        <div className="space-y-2.5 mb-5">
+          {candidate.dealbreakers && candidate.dealbreakers.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {candidate.dealbreakers.map((d, i) => (
+                <span
+                  key={i}
+                  className="flex items-center gap-1.5 text-[12.5px] font-medium text-coral-deep bg-coral/10 px-3 py-1.5 rounded-full"
+                >
+                  <X size={11} /> {d.dealbreaker_tags.label}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {candidate.open_to_relocation && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-deep bg-teal-tint px-2.5 py-1 rounded-md">
+                <Plane size={11} /> Open to relocation
+              </span>
+            )}
+            <SkillChips chips={candidate.ai_skill_chips} />
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-5 text-[13.5px] text-ink-faint mb-5">
         {candidate.city && (
@@ -247,6 +292,17 @@ export default function CandidateDetailPage() {
           </div>
         )}
 
+        {candidate.ideal_practice_text && (
+          <div className="rounded-2xl border border-line p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint mb-2">
+              What they&apos;re looking for in a practice
+            </p>
+            <p className="text-[14.5px] leading-relaxed text-ink whitespace-pre-wrap">
+              {candidate.ideal_practice_text}
+            </p>
+          </div>
+        )}
+
         {candidate.future_goals_text && (
           <div className="rounded-2xl border border-line p-5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint mb-2">
@@ -257,60 +313,72 @@ export default function CandidateDetailPage() {
         )}
       </div>
 
-      {/* Dealbreakers */}
-      {candidate.dealbreakers && candidate.dealbreakers.length > 0 && (
+      {candidate.availability && candidate.availability.length > 0 && (
         <div className="mb-8">
-          <p className="text-[13px] font-semibold text-ink-soft mb-2.5">Dealbreakers</p>
+          <p className="text-[13px] font-semibold text-ink-soft mb-2.5 flex items-center gap-1.5">
+            <Calendar size={13} /> Availability
+          </p>
           <div className="flex flex-wrap gap-2">
-            {candidate.dealbreakers.map((d, i) => (
-              <span key={i} className="flex items-center gap-1.5 text-[12.5px] font-medium text-coral-deep bg-coral/10 px-3 py-1.5 rounded-full">
-                <X size={11} /> {d.dealbreaker_tags.label}
+            {candidate.availability.map((a, i) => (
+              <span key={i} className="text-[12.5px] bg-line-soft px-2.5 py-1.5 rounded-lg">
+                {DAYS_OF_WEEK.find((d) => d.value === a.day_of_week)?.label} {formatTime(a.start_time)}–{formatTime(a.end_time)}
               </span>
             ))}
           </div>
         </div>
       )}
 
-      {/* Work history */}
+      {/* Work history -- threaded timeline, LinkedIn-style: a vertical
+          connecting line down the left with each entry as a node,
+          employer favicon pulled automatically (blank if unreachable --
+          see CompanyFavicon), instead of the previous flat list of
+          plain text rows. */}
       {candidate.work_history && candidate.work_history.length > 0 && (
         <div className="mb-8">
-          <p className="text-[13px] font-semibold text-ink-soft mb-3 flex items-center gap-1.5">
+          <p className="text-[13px] font-semibold text-ink-soft mb-4 flex items-center gap-1.5">
             <Briefcase size={13} /> Work history
           </p>
-          <div className="space-y-3">
-            {candidate.work_history.map((w, i) => (
-              <div key={i} className="flex justify-between text-[14px]">
-                <div>
-                  <span className="font-semibold">{w.employer_name}</span>
-                  {w.role_title && <span className="text-ink-faint"> · {w.role_title}</span>}
+          <div className="relative pl-1">
+            <div className="absolute left-[19px] top-2 bottom-2 w-px bg-line" aria-hidden="true" />
+            <div className="space-y-5">
+              {candidate.work_history.map((w, i) => (
+                <div key={i} className="relative flex gap-3.5">
+                  <div className="relative z-10 bg-bg">
+                    <CompanyFavicon url={w.company_website} size={22} />
+                  </div>
+                  <div className="flex-1 min-w-0 pb-0.5">
+                    <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                      <span className="font-semibold text-[14px]">{w.employer_name}</span>
+                      <span className="text-ink-faint text-[12.5px] shrink-0">
+                        {formatDateRange(w.start_date, w.end_date)}
+                      </span>
+                    </div>
+                    {w.role_title && <p className="text-ink-faint text-[13px]">{w.role_title}</p>}
+                  </div>
                 </div>
-                <span className="text-ink-faint text-[13px] shrink-0 ml-3">
-                  {formatDateRange(w.start_date, w.end_date)}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Education / software */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-        {(candidate.certifications?.length > 0 || candidate.ce_courses?.length > 0 || candidate.university) && (
-          <div>
-            <p className="text-[13px] font-semibold text-ink-soft mb-2.5 flex items-center gap-1.5">
-              <CapIcon size={13} /> Education & certifications
-            </p>
-            <ul className="text-[14px] text-ink space-y-1">
-              {candidate.university && <li>{candidate.university}</li>}
-              {candidate.certifications?.map((c, i) => <li key={i}>{c}</li>)}
-              {candidate.ce_courses?.map((c, i) => <li key={i}>{c}</li>)}
-            </ul>
-          </div>
-        )}
-
+      {/* Skills / hobbies / certifications / CE courses / education --
+          previously merged into one flat mixed list with no visual
+          distinction between categories; now clearly separated
+          subsections (see CandidatePedigree). Software experience kept
+          alongside since it's the same kind of "what do they know"
+          information, just already its own taxonomy. */}
+      <div className="mb-10 space-y-6">
+        <CandidatePedigree
+          university={candidate.university}
+          certifications={candidate.certifications ?? []}
+          ceCourses={candidate.ce_courses ?? []}
+          skills={candidate.skills ?? []}
+          hobbies={candidate.hobbies ?? []}
+        />
         {candidate.software && candidate.software.length > 0 && (
           <div>
-            <p className="text-[13px] font-semibold text-ink-soft mb-2.5">Software experience</p>
+            <p className="text-[12px] font-semibold text-ink-soft mb-2">Software experience</p>
             <div className="flex flex-wrap gap-1.5">
               {candidate.software.map((s, i) => (
                 <span key={i} className="text-[12.5px] bg-line-soft px-2.5 py-1 rounded-md">
@@ -322,10 +390,10 @@ export default function CandidateDetailPage() {
         )}
       </div>
 
-      {(reviews.length > 0 || averageRating != null) && (
+      {reviews.length > 0 && (
         <div className="mb-8 pt-2 border-t border-line">
           <p className="text-[13px] font-semibold text-ink-soft mb-4 mt-6">Reviews</p>
-          <ReviewSummaryAndList reviews={reviews} averageRating={averageRating} />
+          <ReviewList reviews={reviews} />
         </div>
       )}
 
@@ -352,12 +420,26 @@ export default function CandidateDetailPage() {
             </button>
             <button
               onClick={handleMessage}
-              disabled={messaging}
-              className="flex-1 py-3 rounded-control text-[14px] font-semibold bg-teal text-white hover:bg-teal-deep transition flex items-center justify-center gap-2 disabled:opacity-60"
+              className="flex-1 py-3 rounded-control text-[14px] font-semibold bg-teal text-white hover:bg-teal-deep transition flex items-center justify-center gap-2"
             >
-              <MessageSquare size={14} /> {messaging ? "Opening…" : "Message"}
+              <MessageSquare size={14} /> Message
             </button>
-            <button className="flex-1 py-3 rounded-control text-[14px] font-semibold border border-line hover:border-teal hover:text-teal-deep transition flex items-center justify-center gap-2">
+            {/* PAUSED (AI Pro tier): AI Screening is on hold pending real
+                demand (see src/app/owner/settings/billing/page.tsx for the
+                full picture of what's paused). Previously this opened
+                PricingModal on click, but that modal now only offers
+                Standard -- routing a Screening-feature gate through a
+                modal that can't actually unlock Screening would be
+                confusing, so this is now a plain, always-locked
+                coming-soon indicator instead. Restore the tier-check +
+                PricingModal branch when Pro is re-enabled. */}
+            <button
+              onClick={() =>
+                alert("AI Screening is coming soon. In the meantime, our support team can help with anything else.")
+              }
+              className="flex-1 py-3 rounded-control text-[14px] font-semibold border border-line text-ink-faint cursor-default flex items-center justify-center gap-2"
+            >
+              <Lock size={12} />
               <Sparkles size={14} /> AI Screen
             </button>
           </>

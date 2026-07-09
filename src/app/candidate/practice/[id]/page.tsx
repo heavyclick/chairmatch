@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Stethoscope, Wrench, Star } from "lucide-react";
+import { ArrowLeft, MapPin, Stethoscope, Wrench, Star, Calendar, Building2 } from "lucide-react";
+import { DAYS_OF_WEEK } from "@/lib/constants";
+import { SkillChips } from "@/components/shared/skill-chips";
+
+const PRACTICE_TYPE_LABELS: Record<string, string> = {
+  solo: "Solo practice",
+  group: "Group practice",
+  dso: "DSO-affiliated",
+};
 
 interface PracticeProfile {
   practice_name: string;
@@ -17,7 +25,8 @@ interface PracticeProfile {
   google_review_url: string | null;
   google_rating: number | null;
   google_rating_count: number | null;
-  locations?: { city: string; state: string }[];
+  ai_practice_chips: string[] | null;
+  locations?: { city: string; state: string; operating_hours?: { day: number; startTime: string; endTime: string }[] }[];
   software?: { software_tags: { label: string } }[];
   gallery?: { id: string; photo_url: string; caption: string | null }[];
 }
@@ -78,17 +87,24 @@ export default function PracticeProfileViewPage() {
               <MapPin size={13} /> {location.city}, {location.state}
             </p>
           )}
-          {practice.specialty && (
-            <p className="text-[13px] text-teal-deep flex items-center gap-1.5 mt-1">
-              <Stethoscope size={13} /> {practice.specialty.replace(/_/g, " ")}
-            </p>
-          )}
+          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+            {practice.practice_type && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink-soft bg-line-soft px-2.5 py-1 rounded-md">
+                <Building2 size={11} /> {PRACTICE_TYPE_LABELS[practice.practice_type] ?? practice.practice_type}
+              </span>
+            )}
+            {practice.specialty && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-deep bg-teal-tint px-2.5 py-1 rounded-md">
+                <Stethoscope size={11} /> {practice.specialty.replace(/_/g, " ")}
+              </span>
+            )}
+          </div>
           {practice.google_rating != null && (
             <a
               href={practice.google_review_url ?? undefined}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 mt-1.5 text-[12.5px] font-semibold text-ink"
+              className="inline-flex items-center gap-1 mt-2 text-[12.5px] font-semibold text-ink"
             >
               <Star size={13} className="text-gold fill-gold" />
               {practice.google_rating.toFixed(1)}
@@ -96,6 +112,11 @@ export default function PracticeProfileViewPage() {
                 ({practice.google_rating_count ?? 0} Google reviews)
               </span>
             </a>
+          )}
+          {practice.ai_practice_chips && practice.ai_practice_chips.length > 0 && (
+            <div className="mt-2">
+              <SkillChips chips={practice.ai_practice_chips} />
+            </div>
           )}
         </div>
       </div>
@@ -143,6 +164,21 @@ export default function PracticeProfileViewPage() {
           </div>
         )}
       </div>
+
+      {location?.operating_hours && location.operating_hours.length > 0 && (
+        <div className="mb-8">
+          <p className="text-[13px] font-semibold text-ink-soft mb-2.5 flex items-center gap-1.5">
+            <Calendar size={13} /> Operating hours
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {location.operating_hours.map((h, i) => (
+              <span key={i} className="text-[12.5px] bg-line-soft px-2.5 py-1.5 rounded-lg">
+                {DAYS_OF_WEEK.find((d) => d.value === h.day)?.label} {h.startTime}–{h.endTime}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {practice.software && practice.software.length > 0 && (
         <div>

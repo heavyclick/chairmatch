@@ -6,10 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 
 export default function CandidateSettingsPage() {
   const [prefs, setPrefs] = useState({
-    notification_sms_messages: true,
-    notification_sms_invites: true,
-    notification_sms_temp_jobs: false,
-    notification_email_digest: true,
+    notification_email_messages: true,
+    notification_email_invites: true,
+    notification_email_match_alerts: true,
+    notification_email_temp_jobs: true,
   });
   const [allowRosterAdd, setAllowRosterAdd] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -21,7 +21,7 @@ export default function CandidateSettingsPage() {
       if (!data.user) return;
       const { data: profile } = await supabase
         .from("profiles")
-        .select("notification_sms_messages, notification_sms_invites, notification_sms_temp_jobs, notification_email_digest")
+        .select("notification_email_messages, notification_email_invites, notification_email_match_alerts, notification_email_temp_jobs")
         .eq("id", data.user.id)
         .single();
       if (profile) setPrefs(profile);
@@ -56,31 +56,32 @@ export default function CandidateSettingsPage() {
       <h1 className="font-serif text-2xl md:text-3xl font-semibold mb-7">Settings</h1>
 
       <div className="rounded-2xl border border-line bg-bg-raised p-5 mb-5">
-        <p className="text-[14px] font-semibold mb-4">Notifications</p>
+        <p className="text-[14px] font-semibold mb-4">Email notifications</p>
         <div className="space-y-3.5">
           <Toggle
-            label="SMS for new messages"
-            checked={prefs.notification_sms_messages}
-            onChange={(v) => setPrefs((p) => ({ ...p, notification_sms_messages: v }))}
+            label="New messages"
+            checked={prefs.notification_email_messages}
+            onChange={(v) => setPrefs((p) => ({ ...p, notification_email_messages: v }))}
           />
           <Toggle
-            label="SMS for interview invites"
-            checked={prefs.notification_sms_invites}
-            onChange={(v) => setPrefs((p) => ({ ...p, notification_sms_invites: v }))}
+            label="Interview invites"
+            checked={prefs.notification_email_invites}
+            onChange={(v) => setPrefs((p) => ({ ...p, notification_email_invites: v }))}
           />
           <Toggle
-            label="SMS for temp job alerts"
-            checked={prefs.notification_sms_temp_jobs}
-            onChange={(v) => setPrefs((p) => ({ ...p, notification_sms_temp_jobs: v }))}
+            label="Match alerts"
+            checked={prefs.notification_email_match_alerts}
+            onChange={(v) => setPrefs((p) => ({ ...p, notification_email_match_alerts: v }))}
           />
           <Toggle
-            label="Weekly email digest"
-            checked={prefs.notification_email_digest}
-            onChange={(v) => setPrefs((p) => ({ ...p, notification_email_digest: v }))}
+            label="Temp job alerts"
+            checked={prefs.notification_email_temp_jobs}
+            onChange={(v) => setPrefs((p) => ({ ...p, notification_email_temp_jobs: v }))}
           />
         </div>
         <p className="text-[12px] text-ink-faint mt-4 leading-relaxed">
-          Your number is used only for notifications and is never shared in practice search results.
+          Email is how you&apos;ll hear from ChairMatch — you&apos;ll always see these in your
+          notification bell too, even with email off for a category.
         </p>
       </div>
 
