@@ -28,8 +28,7 @@ export default function Home() {
           Hdenta
         </h1>
         <p className="text-[17px] md:text-lg text-ink-soft max-w-sm mx-auto mb-12 leading-relaxed">
-          Where practices find talented staff who fit the practice — before
-          the interview.
+          HIRE FOR FIT. NOT CREDENTIALS
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center mb-4">
