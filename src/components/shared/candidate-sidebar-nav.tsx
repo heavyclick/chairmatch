@@ -38,16 +38,32 @@ function SidebarLink({
 
 export function CandidateSidebarNav() {
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const pathname = usePathname();
 
   useEffect(() => {
-    fetch("/api/messages")
-      .then((res) => res.json())
-      .then((data) => {
-        const threads: { is_unread: boolean }[] = data.threads ?? [];
-        setUnreadMessageCount(threads.filter((t) => t.is_unread).length);
-      })
-      .catch(() => {});
-  }, []);
+    function refetchUnread() {
+      fetch("/api/messages")
+        .then((res) => res.json())
+        .then((data) => {
+          const threads: { is_unread: boolean }[] = data.threads ?? [];
+          setUnreadMessageCount(threads.filter((t) => t.is_unread).length);
+        })
+        .catch(() => {});
+    }
+
+    // Was firing once on mount only (`[]` deps), so the badge never
+    // updated after that -- opening a thread marks it read server-side
+    // (see /api/messages GET), but this component doesn't remount on
+    // client-side nav since it lives in the persistent layout, so the
+    // stale count just sat there even after reading every message.
+    // Refetching on pathname change picks it up as soon as the user
+    // navigates back out of a thread; the 30s poll (matching
+    // notification-bell's pattern) covers messages arriving while
+    // they're already sitting on a page.
+    refetchUnread();
+    const interval = setInterval(refetchUnread, 30000);
+    return () => clearInterval(interval);
+  }, [pathname]);
 
   return (
     <nav className="flex-1">
