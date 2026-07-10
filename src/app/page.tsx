@@ -25,7 +25,7 @@ export default function Home() {
           wordmark, not a shouty 72px one). */}
       <section className="min-h-screen flex flex-col items-center justify-center px-5 md:px-10 text-center">
         <h1 className="font-serif text-4xl md:text-5xl font-semibold tracking-tight mb-5">
-          Hdenta
+          ChairMatch
         </h1>
         <p className="text-[17px] md:text-lg text-ink-soft max-w-sm mx-auto mb-12 leading-relaxed">
           Where practices find talented staff who fit the practice — before
@@ -63,7 +63,7 @@ export default function Home() {
       <section className="min-h-screen flex items-center px-5 md:px-10 py-20 bg-bg-raised border-y border-line">
         <div className="max-w-3xl mx-auto w-full">
           <h2 className="font-serif text-3xl md:text-4xl font-semibold text-center mb-14">
-            The old way vs. Hdenta
+            The old way vs. ChairMatch
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="rounded-2xl border border-line p-8">
@@ -85,7 +85,7 @@ export default function Home() {
             </div>
             <div className="rounded-2xl border border-teal bg-teal-tint/30 p-8">
               <p className="text-[12px] font-semibold uppercase tracking-wide text-teal-deep mb-5">
-                Hdenta
+                ChairMatch
               </p>
               <ul className="space-y-4">
                 {[
@@ -115,7 +115,7 @@ export default function Home() {
               The only surprise on day one is where the bathroom is.
             </h2>
             <p className="text-[16px] text-ink-soft max-w-lg mx-auto leading-relaxed">
-              Hdenta is where dental practices and dental staff say the
+              ChairMatch is where dental practices and dental staff say the
               real stuff — schedule, pay, dealbreakers, the actual culture —
               before anyone applies. Not after someone&apos;s already given
               notice.
@@ -135,7 +135,7 @@ export default function Home() {
               </p>
               <p className="text-[14.5px] text-ink-soft leading-relaxed">
                 By the time someone says the schedule &quot;doesn&apos;t
-                work,&quot; they knew that in week one. On Hdenta, every
+                work,&quot; they knew that in week one. On ChairMatch, every
                 candidate has already told you what they won&apos;t do —
                 solo coverage, weekends, a family-run office — before you
                 ever pick up the phone.
@@ -153,7 +153,7 @@ export default function Home() {
                 their first real Monday.
               </p>
               <p className="text-[14.5px] text-ink-soft leading-relaxed">
-                Practices on Hdenta write down the actual week before
+                Practices on ChairMatch write down the actual week before
                 you apply — the short-staffed days, the pace, what
                 they&apos;ll need from you when it&apos;s busy. You list
                 your dealbreakers too, so a no on either side happens
@@ -218,7 +218,7 @@ export default function Home() {
             This is what a profile actually says
           </h2>
           <p className="text-center text-ink-faint text-[15px] mb-16 max-w-lg mx-auto">
-            Every Hdenta profile answers questions a resume or job post
+            Every ChairMatch profile answers questions a resume or job post
             never asks. Here&apos;s what that looks like in practice.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
