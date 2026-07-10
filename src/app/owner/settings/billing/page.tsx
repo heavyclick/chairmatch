@@ -78,35 +78,73 @@ function BillingPageInner() {
     fetchPlan();
   }, [fetchPlan]);
 
-  // Checkout redirects back here with ?success=true the moment Dodo
-  // confirms the charge on their end -- but the webhook that actually
-  // writes subscription_tier to our DB can land a beat after that
-  // redirect happens. A single fetch-on-mount can race it and show the
-  // old "free" tier even though the payment genuinely went through, which
-  // is exactly what was happening before. Poll briefly instead of trusting
-  // one read.
+  // Checkout redirects back here with ?success=true, and Dodo itself
+  // appends payment_id (one-time) or subscription_id (recurring) plus
+  // status -- see https://docs.dodopayments.com/features/checkout.
+  // Previously this only polled our own DB waiting for the webhook to
+  // write subscription_tier -- fine when the webhook lands quickly, but
+  // if it's delayed, not yet registered in the Dodo dashboard, or
+  // misconfigured, the poll below just times out after ~15s and the
+  // practice is left looking like it's still on the free plan despite a
+  // real, successful charge (see src/app/api/checkout/confirm/route.ts
+  // for the full explanation). Asking Dodo directly via that route
+  // first means the unlock is instant and doesn't depend on webhook
+  // delivery at all -- the poll below is now just a fallback for the
+  // rare case Dodo itself reports the payment as still processing.
   useEffect(() => {
     if (searchParams.get("success") !== "true") return;
 
     // eslint-disable-next-line react-hooks/set-state-in-effect -- see justification above
     setConfirming(true);
     const startingTier = tier;
-    let attempts = 0;
-    const maxAttempts = 10; // ~15s at 1.5s intervals -- webhooks normally land in well under that
+    const paymentId = searchParams.get("payment_id");
+    const subscriptionId = searchParams.get("subscription_id");
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | undefined;
 
-    const interval = setInterval(async () => {
-      attempts += 1;
-      const practice = await fetchPlan();
-      const changed = practice && practice.subscription_tier !== startingTier;
-      if (changed || attempts >= maxAttempts) {
-        clearInterval(interval);
-        setConfirming(false);
-        // Drop ?success=true from the URL so refreshing doesn't re-poll
-        router.replace("/owner/settings/billing");
+    async function confirmThenPoll() {
+      if (paymentId || subscriptionId) {
+        try {
+          const qs = paymentId
+            ? `payment_id=${encodeURIComponent(paymentId)}`
+            : `subscription_id=${encodeURIComponent(subscriptionId!)}`;
+          const res = await fetch(`/api/checkout/confirm?${qs}`);
+          const data = await res.json();
+          if (data.confirmed) {
+            await fetchPlan();
+            if (cancelled) return;
+            setConfirming(false);
+            router.replace("/owner/settings/billing");
+            return;
+          }
+        } catch (err) {
+          console.error("[billing] /api/checkout/confirm failed, falling back to poll:", err);
+        }
       }
-    }, 1500);
+      if (cancelled) return;
 
-    return () => clearInterval(interval);
+      // Fallback: either there was no session_id, the confirm call
+      // errored, or Dodo itself says the payment is still processing.
+      // Poll briefly in case the webhook lands regardless.
+      let attempts = 0;
+      const maxAttempts = 10; // ~15s at 1.5s intervals
+      interval = setInterval(async () => {
+        attempts += 1;
+        const practice = await fetchPlan();
+        const changed = practice && practice.subscription_tier !== startingTier;
+        if (changed || attempts >= maxAttempts) {
+          clearInterval(interval);
+          setConfirming(false);
+          router.replace("/owner/settings/billing");
+        }
+      }, 1500);
+    }
+
+    confirmThenPoll();
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
