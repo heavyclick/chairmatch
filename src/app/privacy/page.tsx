@@ -78,7 +78,7 @@ export default function PrivacyPage() {
 
         <Section number="2" title="How we use this information">
           <ul className="list-disc pl-5 space-y-2">
-            <li>To operate the marketplace — matching, search, messaging, and the free-vs-paid profile paywall</li>
+            <li>To operate the platform — matching, search, messaging, and the free-vs-paid profile paywall</li>
             <li>To process payments and manage subscriptions</li>
             <li>To send account, transactional, and (if you opt in) product emails</li>
             <li>To detect fraud, abuse, and violations of our Terms of Service</li>
