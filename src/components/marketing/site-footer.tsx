@@ -18,7 +18,7 @@ export function SiteFooter() {
             <span className="font-serif text-lg font-semibold">Hdenta</span>
           </Link>
           <p className="text-[13.5px] text-ink-soft leading-relaxed max-w-xs">
-            The hiring marketplace for independent dental practices --
+            Hiring software for independent dental practices --
             built around what a resume can&apos;t tell you.
           </p>
         </div>
