@@ -84,6 +84,11 @@ export function SiteFooter() {
                 Privacy Policy
               </Link>
             </li>
+            <li>
+              <Link href="/refund-policy" className="hover:text-ink transition-colors">
+                Refund Policy
+              </Link>
+            </li>
           </ul>
         </div>
       </div>
@@ -96,6 +101,9 @@ export function SiteFooter() {
           </Link>
           <Link href="/privacy" className="hover:text-ink-soft transition-colors">
             Privacy
+          </Link>
+          <Link href="/refund-policy" className="hover:text-ink-soft transition-colors">
+            Refunds
           </Link>
         </div>
       </div>
