@@ -37,12 +37,6 @@ function getAccessToken(): string {
 export const GUMROAD_CONFIG = {
   sellerSubdomain: process.env.GUMROAD_SELLER_SUBDOMAIN ?? "",
   standardProductPermalink: process.env.GUMROAD_STANDARD_PERMALINK ?? "",
-  // Membership-style Gumroad products (tiers, e.g. "Standard") need this
-  // to pin the checkout link to the right tier -- visible as the
-  // `option=` query param on the product's own "Share" link in the
-  // Gumroad dashboard. Not needed if the product has only one tier and
-  // Gumroad defaults to it, but safer to always include it if set.
-  standardOptionId: process.env.GUMROAD_STANDARD_OPTION_ID ?? "",
 };
 
 /**
@@ -73,9 +67,6 @@ export function buildGumroadCheckoutUrl(params: { userId: string; email: string 
   url.searchParams.set("wanted", "true");
   url.searchParams.set("email", params.email);
   url.searchParams.set("supabase_user_id", params.userId);
-  if (GUMROAD_CONFIG.standardOptionId) {
-    url.searchParams.set("option", GUMROAD_CONFIG.standardOptionId);
-  }
   return url.toString();
 }
 
