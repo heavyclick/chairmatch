@@ -33,8 +33,8 @@ export function HelpChatWidget({ accountType }: { accountType: "owner" | "candid
     function handleOpenRequest() {
       setOpen(true);
     }
-    window.addEventListener("chairmatch:open-help-chat", handleOpenRequest);
-    return () => window.removeEventListener("chairmatch:open-help-chat", handleOpenRequest);
+    window.addEventListener("Hdenta:open-help-chat", handleOpenRequest);
+    return () => window.removeEventListener("Hdenta:open-help-chat", handleOpenRequest);
   }, []);
 
   // PAUSED (AI Pro tier): "Talk to a human" is gated on subscription_tier
@@ -126,7 +126,7 @@ export function HelpChatWidget({ accountType }: { accountType: "owner" | "candid
     <div className="fixed bottom-5 right-5 z-40 w-[calc(100vw-2.5rem)] max-w-sm h-[70vh] max-h-[520px] bg-bg-raised border border-line rounded-2xl shadow-xl flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-ink text-white">
         <span className="text-[14px] font-semibold flex items-center gap-2">
-          <LifeBuoy size={15} /> ChairMatch Help
+          <LifeBuoy size={15} /> Hdenta Help
         </span>
         <button onClick={() => setOpen(false)} aria-label="Close">
           <X size={17} />
@@ -136,7 +136,7 @@ export function HelpChatWidget({ accountType }: { accountType: "owner" | "candid
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 && (
           <p className="text-[13px] text-ink-faint">
-            Ask me anything about how ChairMatch works -- browsing, pricing, messaging, alerts, reviews,
+            Ask me anything about how Hdenta works -- browsing, pricing, messaging, alerts, reviews,
             billing, whatever you&apos;re stuck on.
           </p>
         )}

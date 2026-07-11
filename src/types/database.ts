@@ -156,7 +156,8 @@ export interface PracticeProfile {
   subscription_tier: SubscriptionTier;
   subscription_renews_at: string | null;
   screening_credit_balance: number;
-  dodo_customer_id: string | null;
+  payment_customer_id: string | null;
+  payment_provider: string | null;
 
   google_review_url: string | null;
   google_rating: number | null;

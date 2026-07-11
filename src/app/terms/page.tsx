@@ -41,7 +41,7 @@ export default function TermsPage() {
 
         <p className="text-[14.5px] text-ink-soft leading-relaxed mb-10">
           These Terms of Service (&quot;Terms&quot;) govern your access to
-          and use of Hdenta, a marketplace connecting independent
+          and use of Hdenta, hiring software connecting independent
           dental practices (&quot;Practices,&quot; &quot;Owners&quot;) with
           dental staff seeking work (&quot;Candidates&quot;). By creating an
           account or otherwise using Hdenta, you agree to these Terms.
@@ -60,8 +60,10 @@ export default function TermsPage() {
 
         <Section number="2" title="What Hdenta is — and isn't">
           <p>
-            Hdenta is a venue for practices and dental staff to find and
-            evaluate each other. We are not a staffing agency, employer of
+            Hdenta is subscription software that gives Practices search,
+            filtering, and messaging tools to evaluate dental staff
+            profiles, and gives Candidates a profile and inbox to be
+            found through. We are not a staffing agency, employer of
             record, or recruiter, and we don&apos;t guarantee that any
             Practice will hire any Candidate or that any Candidate will
             accept an offer. Practices and Candidates are solely
@@ -94,8 +96,9 @@ export default function TermsPage() {
             Subscriptions renew automatically at the then-current price
             unless cancelled before the renewal date. You can cancel any
             time from your billing settings — cancellation takes effect at
-            the end of the current billing period, and we don&apos;t
-            prorate or refund partial periods except where required by law.
+            the end of the current billing period. Refund eligibility is
+            covered separately in our{" "}
+            <a href="/refund-policy" className="text-teal-deep font-semibold">Refund Policy</a>.
             Payments are processed by a third-party payment processor; we
             don&apos;t store your full card details.
           </p>
@@ -137,7 +140,7 @@ export default function TermsPage() {
           <p>
             You retain ownership of the content you post. By posting it,
             you grant Hdenta a license to display it to other users as
-            necessary to operate the marketplace (for example, showing a
+            necessary to operate the platform (for example, showing a
             blurred version of your profile to a free-tier practice). The
             Hdenta name, logo, and platform itself are our property and
             aren&apos;t licensed to you beyond what&apos;s needed to use

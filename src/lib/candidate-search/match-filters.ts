@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 
-/** Mirrors src/components/owner/filter-sheet.tsx's BrowseFilters shape -- match_alerts.filters is a jsonb snapshot of exactly this. */
+/** Mirrors src/components/owner/filter-sheet.tsx's  BrowseFilters shape -- match_alerts.filters is a jsonb snapshot of exactly this. */
 export interface AlertFilters {
   roleSlugs?: string[];
   city?: string;

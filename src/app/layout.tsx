@@ -21,7 +21,7 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "Hdenta — Hire for fit, not just credentials.",
   description:
-    "The dental staffing marketplace built around fit, not just resumes. For practice owners hiring hygienists, assistants, front desk, and office managers -- and for the dental staff who want a practice that actually fits them.",
+    "Hiring software for independent dental practices -- built to surface real culture fit, schedule, and dealbreakers before the interview, not just a resume. For practice owners hiring hygienists, assistants, front desk, and office managers -- and for the dental staff who want a practice that actually fits them.",
 };
 
 export default function RootLayout({

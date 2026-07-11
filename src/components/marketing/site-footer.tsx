@@ -18,7 +18,7 @@ export function SiteFooter() {
             <span className="font-serif text-lg font-semibold">Hdenta</span>
           </Link>
           <p className="text-[13.5px] text-ink-soft leading-relaxed max-w-xs">
-            The hiring marketplace for independent dental practices --
+            Hiring software for independent dental practices --
             built around what a resume can&apos;t tell you.
           </p>
         </div>
@@ -84,6 +84,11 @@ export function SiteFooter() {
                 Privacy Policy
               </Link>
             </li>
+            <li>
+              <Link href="/refund-policy" className="hover:text-ink transition-colors">
+                Refund Policy
+              </Link>
+            </li>
           </ul>
         </div>
       </div>
@@ -96,6 +101,9 @@ export function SiteFooter() {
           </Link>
           <Link href="/privacy" className="hover:text-ink-soft transition-colors">
             Privacy
+          </Link>
+          <Link href="/refund-policy" className="hover:text-ink-soft transition-colors">
+            Refunds
           </Link>
         </div>
       </div>
