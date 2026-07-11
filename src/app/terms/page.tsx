@@ -94,8 +94,9 @@ export default function TermsPage() {
             Subscriptions renew automatically at the then-current price
             unless cancelled before the renewal date. You can cancel any
             time from your billing settings — cancellation takes effect at
-            the end of the current billing period, and we don&apos;t
-            prorate or refund partial periods except where required by law.
+            the end of the current billing period. Refund eligibility is
+            covered separately in our{" "}
+            <a href="/refund-policy" className="text-teal-deep font-semibold">Refund Policy</a>.
             Payments are processed by a third-party payment processor; we
             don&apos;t store your full card details.
           </p>
