@@ -40,6 +40,7 @@ function SignupForm() {
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkEmail, setCheckEmail] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,9 +49,28 @@ function SignupForm() {
     setLoading(true);
 
     const supabase = createClient();
+    // account_type/terms_accepted_at/marketing_opt_in ride as signUp's
+    // own metadata now, read by the public.handle_new_user() trigger
+    // (see supabase/migrations/0021_profile_creation_via_trigger.sql)
+    // that creates the profiles row -- NOT a separate client-side
+    // insert anymore. That insert used to run immediately after this
+    // call using the browser's own session to satisfy
+    // `auth.uid() = id`, which broke the moment "Confirm email" got
+    // turned on in Supabase Auth settings: signUp() then returns a
+    // user with no active session until the confirmation link is
+    // clicked, so the insert had no session to authenticate with and
+    // RLS correctly blocked it, regardless of how that policy was
+    // written. A DB trigger isn't subject to session state at all.
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          account_type: accountType,
+          terms_accepted_at: new Date().toISOString(),
+          marketing_opt_in: marketingOptIn,
+        },
+      },
     });
 
     if (signUpError) {
@@ -59,32 +79,44 @@ function SignupForm() {
       return;
     }
 
-    if (data.user) {
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: data.user.id,
-        email,
-        account_type: accountType,
-        terms_accepted_at: new Date().toISOString(),
-        marketing_opt_in: marketingOptIn,
-      });
+    setLoading(false);
 
-      if (profileError) {
-        setLoading(false);
-        setError(profileError.message);
-        return;
-      }
-
-      // Fire-and-forget: don't await, and don't let a failed/slow email
-      // block or break the redirect into onboarding. This fires before
-      // practice_profiles/candidate_profiles exists (that's created
-      // during onboarding, not here), so the email renders without a
-      // name the first time -- see src/app/api/auth/welcome/route.ts.
-      fetch("/api/auth/welcome", { method: "POST" }).catch(() => {});
+    if (!data.session) {
+      // Email confirmation is required and this account isn't
+      // confirmed yet -- there's no active session to send them into
+      // onboarding with (every /owner/* and /candidate/* route
+      // requires one). Show a "check your inbox" state instead of
+      // redirecting into a login wall. The welcome email fires later,
+      // from wherever the confirmation link lands them, since
+      // /api/auth/welcome requires an authenticated caller too.
+      setCheckEmail(true);
+      return;
     }
 
-    setLoading(false);
+    // Confirmation is off (or this account was auto-confirmed) --
+    // there's a real session right now, so it's safe to send the
+    // welcome email and go straight into onboarding.
+    fetch("/api/auth/welcome", { method: "POST" }).catch(() => {});
     window.location.href =
       accountType === "owner" ? "/onboarding/owner" : "/onboarding/candidate";
+  }
+
+  if (checkEmail) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-5">
+        <div className="w-full max-w-md text-center">
+          <div className="flex items-center gap-2 mb-8 justify-center">
+            <span className="w-[7px] h-[7px] rounded-full bg-coral" />
+            <span className="font-serif text-xl font-semibold">Hdenta</span>
+          </div>
+          <h1 className="font-serif text-2xl font-semibold mb-3">Check your email</h1>
+          <p className="text-[14.5px] text-ink-soft leading-relaxed">
+            We sent a confirmation link to <span className="font-semibold text-ink">{email}</span>.
+            Click it to finish setting up your account.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (!accountType) {
