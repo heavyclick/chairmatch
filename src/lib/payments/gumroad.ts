@@ -11,7 +11,7 @@
  * at the repo root for the one-time dashboard setup this depends on.
  *
  * Gumroad also does not support webhook signature verification (see
- * src/app/api/webhooks/gumroad/route.ts) -- every function here that
+ * src/app/api/webhooks/gumroad/sale/route.ts) -- every function here that
  * takes an id fetched from an incoming ping treats that ping as
  * nothing more than a hint to go check the *authoritative* record via
  * this API, using our own access token. Never trust ping body data
