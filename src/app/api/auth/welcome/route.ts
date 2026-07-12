@@ -30,7 +30,7 @@ export async function POST() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("account_type, email")
+    .select("account_type, email, email_verification_token")
     .eq("id", authData.user.id)
     .single();
 
@@ -49,7 +49,7 @@ export async function POST() {
       await sendEmail({
         to: profile.email,
         subject: "Welcome to Hdenta",
-        html: ownerWelcomeEmailHtml(practice?.practice_name ?? null),
+        html: ownerWelcomeEmailHtml(practice?.practice_name ?? null, profile.email_verification_token),
       });
     } else {
       const { data: candidate } = await supabase
@@ -61,7 +61,7 @@ export async function POST() {
       await sendEmail({
         to: profile.email,
         subject: "Welcome to Hdenta",
-        html: candidateWelcomeEmailHtml(candidate?.full_name ?? null),
+        html: candidateWelcomeEmailHtml(candidate?.full_name ?? null, profile.email_verification_token),
       });
     }
   } catch (err) {
