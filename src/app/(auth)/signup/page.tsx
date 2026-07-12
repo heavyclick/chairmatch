@@ -73,6 +73,13 @@ function SignupForm() {
         setError(profileError.message);
         return;
       }
+
+      // Fire-and-forget: don't await, and don't let a failed/slow email
+      // block or break the redirect into onboarding. This fires before
+      // practice_profiles/candidate_profiles exists (that's created
+      // during onboarding, not here), so the email renders without a
+      // name the first time -- see src/app/api/auth/welcome/route.ts.
+      fetch("/api/auth/welcome", { method: "POST" }).catch(() => {});
     }
 
     setLoading(false);
