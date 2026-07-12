@@ -17,7 +17,7 @@ const wrapper = (bodyHtml: string) => `
   </div>
 </div>`;
 
-export function ownerWelcomeEmailHtml(practiceName: string | null): string {
+export function ownerWelcomeEmailHtml(practiceName: string | null, verifyToken: string | null): string {
   return wrapper(`
     <h1 style="font-family:Georgia,'Times New Roman',serif;font-size:22px;color:#1A2E2B;margin:0 0 12px;">
       Welcome to Hdenta${practiceName ? `, ${practiceName}` : ""}
@@ -33,10 +33,11 @@ export function ownerWelcomeEmailHtml(practiceName: string | null): string {
               padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;">
       Browse candidates
     </a>
+    ${verifyToken ? verifyFooter(verifyToken) : ""}
   `);
 }
 
-export function candidateWelcomeEmailHtml(firstName: string | null): string {
+export function candidateWelcomeEmailHtml(firstName: string | null, verifyToken: string | null): string {
   return wrapper(`
     <h1 style="font-family:Georgia,'Times New Roman',serif;font-size:22px;color:#1A2E2B;margin:0 0 12px;">
       Welcome to Hdenta${firstName ? `, ${firstName}` : ""}
@@ -51,5 +52,20 @@ export function candidateWelcomeEmailHtml(firstName: string | null): string {
               padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;">
       Complete your profile
     </a>
+    ${verifyToken ? verifyFooter(verifyToken) : ""}
   `);
+}
+
+// Deliberately low-key styling and placement (below the real CTA, small
+// text) -- this is the whole point of the "soft" verification: it's not
+// urgent, doesn't block anything, and shouldn't visually compete with
+// the actual welcome message.
+function verifyFooter(token: string): string {
+  return `
+    <p style="font-size:12.5px;color:#9A9A8F;margin-top:24px;padding-top:16px;border-top:1px solid #E5E3DB;">
+      Whenever you get a chance:
+      <a href="https://www.hdenta.com/api/auth/verify-email?token=${token}" style="color:#3D7A6E;">verify your email address</a>.
+      No rush -- everything above already works either way.
+    </p>
+  `;
 }
