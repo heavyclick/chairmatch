@@ -61,6 +61,8 @@ export interface Profile {
   notification_email_digest: boolean;
   created_at: string;
   last_active_at: string;
+  email_verified_at: string | null;
+  email_verification_token: string | null;
 }
 
 export interface WorkHistoryEntry {
