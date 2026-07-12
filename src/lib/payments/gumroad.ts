@@ -43,6 +43,19 @@ export const GUMROAD_CONFIG = {
   // Gumroad dashboard. Not needed if the product has only one tier and
   // Gumroad defaults to it, but safer to always include it if set.
   standardOptionId: process.env.GUMROAD_STANDARD_OPTION_ID ?? "",
+  // TEMPORARY, TEST-ONLY: set this in Vercel to a real 100%-off
+  // discount code (see your Gumroad dashboard -> Checkout -> Discounts)
+  // to make the real "Choose Standard" button on the billing page
+  // check out at $0 instead of $100 -- Gumroad's own official guidance
+  // for testing a purchase is a 100% discount code, not "buy your own
+  // product while logged in as the creator" (that path is explicitly
+  // excluded from the normal sales dashboard per Gumroad's help
+  // article, and isn't guaranteed to behave like a real sale for
+  // webhook purposes). This lets you test the *entire* real flow --
+  // real button, real checkout, real webhook, real entitlement grant
+  // -- without paying anything and without manually editing any URL.
+  // REMOVE this env var (or leave it unset) before real customers pay.
+  testDiscountCode: process.env.GUMROAD_TEST_DISCOUNT_CODE ?? "",
 };
 
 /**
@@ -67,9 +80,10 @@ export function buildGumroadCheckoutUrl(params: { userId: string; email: string 
     );
   }
 
-  const url = new URL(
-    `https://${GUMROAD_CONFIG.sellerSubdomain}.gumroad.com/l/${GUMROAD_CONFIG.standardProductPermalink}`
-  );
+  const path = GUMROAD_CONFIG.testDiscountCode
+    ? `/l/${GUMROAD_CONFIG.standardProductPermalink}/${GUMROAD_CONFIG.testDiscountCode}`
+    : `/l/${GUMROAD_CONFIG.standardProductPermalink}`;
+  const url = new URL(`https://${GUMROAD_CONFIG.sellerSubdomain}.gumroad.com${path}`);
   url.searchParams.set("wanted", "true");
   url.searchParams.set("email", params.email);
   url.searchParams.set("supabase_user_id", params.userId);
