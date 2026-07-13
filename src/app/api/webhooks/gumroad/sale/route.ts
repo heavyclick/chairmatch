@@ -17,32 +17,32 @@ import { applyEntitlement } from "@/lib/payments/apply-entitlement";
  * that whole bug class rather than requiring the query param to be
  * remembered correctly at registration time.
  *
+ * CONFIRMED BEHAVIOR (via diagnostic logging against a real sale):
+ * Gumroad's GET /v2/sales/:id API endpoint does NOT reliably return
+ * custom url_params -- but the ping body itself does, correctly,
+ * every time, as form-encoded `url_params[key]` fields. So
+ * supabase_user_id is read directly from the ping body below, not
+ * from the API lookup. The API lookup is still used afterward, but
+ * only for what it's actually reliable for: verifying the sale isn't
+ * refunded/disputed/chargedback/a Gumroad-internal test purchase
+ * before granting anything.
+ *
  * CRITICAL: Gumroad pings are NOT signed -- see
- * src/lib/payments/gumroad.ts for the full explanation. This handler
- * never trusts the ping body for anything that grants access; it only
- * pulls sale_id out of it, then re-fetches the authoritative record
- * from Gumroad's API using our own access token.
+ * src/lib/payments/gumroad.ts for the full explanation. The
+ * supabase_user_id below comes from the unsigned ping body, so it
+ * alone isn't proof of payment -- the API lookup right after is what
+ * actually confirms this sale is real and unrefunded, using OUR OWN
+ * access token, before anything gets granted.
  *
  * Payload is x-www-form-urlencoded, not JSON.
  */
 export async function POST(request: NextRequest) {
   const body = await request.formData();
   const saleId = body.get("sale_id")?.toString();
+  const userId = body.get("url_params[supabase_user_id]")?.toString();
 
-  // DIAGNOSTIC: log every field Gumroad actually put in the ping body.
-  // Gumroad's docs say custom url_params ride along in the ping itself
-  // (not just retrievable via the sales API afterward) -- if
-  // supabase_user_id (or a url_params[...]-prefixed version of it)
-  // shows up HERE but not in the API lookup below, that tells us
-  // exactly where it's being lost. Remove once this is resolved.
-  const rawBodyEntries: Record<string, string> = {};
-  for (const [key, value] of body.entries()) {
-    rawBodyEntries[key] = value.toString();
-  }
-  console.log("[/api/webhooks/gumroad/sale] RAW PING BODY:", JSON.stringify(rawBodyEntries));
-
-  if (!saleId) {
-    console.warn("[/api/webhooks/gumroad/sale] ping with no sale_id");
+  if (!saleId || !userId) {
+    console.warn(`[/api/webhooks/gumroad/sale] ping missing sale_id or supabase_user_id (sale_id: ${saleId ?? "none"})`);
     return NextResponse.json({ received: true });
   }
 
@@ -62,35 +62,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true });
     }
 
-    let userId = sale.url_params?.supabase_user_id;
-
-    // Fallback: Gumroad's docs say custom url_params ride in the ping
-    // body itself, form-encoded as `url_params[key]` -- if the API
-    // lookup above doesn't have it but the original ping did, use that
-    // instead of giving up. This may turn out to be the actual fix
-    // rather than just a diagnostic, depending on what the logging
-    // above reveals.
-    if (!userId) {
-      userId = rawBodyEntries["url_params[supabase_user_id]"] || undefined;
-      if (userId) {
-        console.log("[/api/webhooks/gumroad/sale] recovered supabase_user_id from raw ping body instead of API lookup:", saleId);
-      }
-    }
-
-    if (!userId) {
-      // DIAGNOSTIC: full sale object, not just the warning -- this is
-      // what /v2/sales/:id actually returned, so we can see every key
-      // it has (in case url_params exists under a different shape than
-      // expected, or is missing entirely from this endpoint's response).
-      console.warn("[/api/webhooks/gumroad/sale] no supabase_user_id in url_params:", saleId);
-      console.warn("[/api/webhooks/gumroad/sale] FULL SALE OBJECT:", JSON.stringify(sale));
-      return NextResponse.json({ received: true });
-    }
-
     const supabase = createServiceClient();
     await applyEntitlement(supabase, userId, "standard", "gumroad", {
       customerId: sale.subscription_id ?? sale.id,
     });
+    console.log("[/api/webhooks/gumroad/sale] granted standard:", userId);
   } catch (err) {
     console.error("[/api/webhooks/gumroad/sale] failed:", err);
     // Still 200 -- Gumroad retries hourly for up to 3 hours on
