@@ -52,9 +52,17 @@ export default function OwnerSettingsPage() {
 
       <Link
         href="/owner/settings/billing"
-        className="flex items-center justify-between rounded-xl border border-line p-4 hover:border-teal transition-colors"
+        className="flex items-center justify-between rounded-xl border border-line p-4 hover:border-teal transition-colors mb-3"
       >
         <span className="text-[14px] font-semibold">Billing & plan</span>
+        <ArrowRight size={15} className="text-ink-faint" />
+      </Link>
+
+      <Link
+        href="/owner/support"
+        className="flex items-center justify-between rounded-xl border border-line p-4 hover:border-teal transition-colors"
+      >
+        <span className="text-[14px] font-semibold">Support</span>
         <ArrowRight size={15} className="text-ink-faint" />
       </Link>
     </div>

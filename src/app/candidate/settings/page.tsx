@@ -107,6 +107,9 @@ export default function CandidateSettingsPage() {
       <Link href="/candidate/settings/edit" className="block text-center text-teal-deep font-semibold text-[13.5px] py-2">
         Edit your profile
       </Link>
+      <Link href="/candidate/support" className="block text-center text-ink-soft font-semibold text-[13.5px] py-2">
+        Support
+      </Link>
     </div>
   );
 }

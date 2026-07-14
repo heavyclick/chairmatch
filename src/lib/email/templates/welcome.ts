@@ -3,6 +3,14 @@
  * in this codebase yet, so these are hand-written with inline styles
  * and web-safe font fallbacks (email clients can't reliably load
  * Fraunces/Inter from Google Fonts the way the web app does).
+ *
+ * Fires at the END of onboarding now (see src/app/onboarding/owner
+ * /page.tsx and .../candidate/page.tsx), not at signup -- by this
+ * point practice_name / candidate full_name actually exist, so this
+ * can be genuinely personalized, and it lands at the real "I just
+ * finished setting up" moment rather than competing with a separate
+ * confirmation email sent seconds after signup (see
+ * src/lib/email/templates/confirmation.ts for that one).
  */
 
 const wrapper = (bodyHtml: string) => `
@@ -17,55 +25,66 @@ const wrapper = (bodyHtml: string) => `
   </div>
 </div>`;
 
-export function ownerWelcomeEmailHtml(practiceName: string | null, verifyToken: string | null): string {
+export function ownerWelcomeEmailHtml(practiceName: string | null): string {
   return wrapper(`
-    <h1 style="font-family:Georgia,'Times New Roman',serif;font-size:22px;color:#1A2E2B;margin:0 0 12px;">
-      Welcome to Hdenta${practiceName ? `, ${practiceName}` : ""}
+    <h1 style="font-family:Georgia,'Times New Roman',serif;font-size:23px;color:#1A2E2B;margin:0 0 16px;line-height:1.3;">
+      ${practiceName ? `${practiceName}, you're` : "You're"} all set up.
     </h1>
-    <p style="font-size:14.5px;line-height:1.6;color:#4A4A42;margin:0 0 20px;">
-      Your account is live. Every candidate on Hdenta has already answered
-      the questions a resume never does -- schedule, dealbreakers, what
-      they actually need from the job -- so you can see the real fit
-      before you ever pick up the phone.
+    <p style="font-size:14.5px;line-height:1.65;color:#4A4A42;margin:0 0 16px;">
+      Genuinely glad you're here. Most hiring tools show you a stack of
+      resumes and call it a day -- we built Hdenta because that's never
+      been the hard part. The hard part is finding out three weeks in
+      that someone needed weekends off, or couldn't work solo on slow
+      days, or just didn't fit how your practice actually runs. That's
+      the stuff a resume never says out loud.
+    </p>
+    <p style="font-size:14.5px;line-height:1.65;color:#4A4A42;margin:0 0 16px;">
+      Every candidate on Hdenta has already told you the real stuff --
+      dealbreakers, schedule, what they actually need from the job --
+      before you've said a word to them. That's the whole bet we're
+      making: fewer surprises, faster fit, hires that actually stick.
+    </p>
+    <p style="font-size:14.5px;line-height:1.65;color:#4A4A42;margin:0 0 24px;">
+      Your profile's live and ready to browse candidates right now. If
+      anything feels unclear or just plain annoying, reply to this
+      email -- a real person reads it, not a ticket queue.
     </p>
     <a href="https://www.hdenta.com/owner/browse"
        style="display:inline-block;background:#3D7A6E;color:#ffffff;text-decoration:none;
               padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;">
       Browse candidates
     </a>
-    ${verifyToken ? verifyFooter(verifyToken) : ""}
   `);
 }
 
-export function candidateWelcomeEmailHtml(firstName: string | null, verifyToken: string | null): string {
+export function candidateWelcomeEmailHtml(fullName: string | null): string {
   return wrapper(`
-    <h1 style="font-family:Georgia,'Times New Roman',serif;font-size:22px;color:#1A2E2B;margin:0 0 12px;">
-      Welcome to Hdenta${firstName ? `, ${firstName}` : ""}
+    <h1 style="font-family:Georgia,'Times New Roman',serif;font-size:23px;color:#1A2E2B;margin:0 0 16px;line-height:1.3;">
+      ${fullName ? `Welcome, ${fullName}.` : "Welcome."}
     </h1>
-    <p style="font-size:14.5px;line-height:1.6;color:#4A4A42;margin:0 0 20px;">
-      Your profile is live, and it's free, always. Finish filling in your
-      availability and dealbreakers so practices see the real picture --
-      the more specific you are, the better the matches.
+    <p style="font-size:14.5px;line-height:1.65;color:#4A4A42;margin:0 0 16px;">
+      Your profile is live, and genuinely -- it's free, always, no
+      catch we're waiting to spring on you later. We built Hdenta
+      because "just send your resume" has never told a practice the
+      thing that actually matters: whether you'd actually want to
+      work there, and whether they'd actually be good to work for.
+    </p>
+    <p style="font-size:14.5px;line-height:1.65;color:#4A4A42;margin:0 0 16px;">
+      You've already said what your dealbreakers are, what you need
+      from a schedule, what you're actually looking for -- that's what
+      practices see first, before they ever reach out. It means the
+      conversations you do have are worth having, not another posting
+      that turns out to be nothing like it looked.
+    </p>
+    <p style="font-size:14.5px;line-height:1.65;color:#4A4A42;margin:0 0 24px;">
+      Fill in a bit more when you get the chance -- the more specific
+      you are, the better the matches get. And if something's
+      confusing or broken, just reply here. A person reads it.
     </p>
     <a href="https://www.hdenta.com/candidate/practices"
        style="display:inline-block;background:#3D7A6E;color:#ffffff;text-decoration:none;
               padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;">
-      Complete your profile
+      Browse practices
     </a>
-    ${verifyToken ? verifyFooter(verifyToken) : ""}
   `);
-}
-
-// Deliberately low-key styling and placement (below the real CTA, small
-// text) -- this is the whole point of the "soft" verification: it's not
-// urgent, doesn't block anything, and shouldn't visually compete with
-// the actual welcome message.
-function verifyFooter(token: string): string {
-  return `
-    <p style="font-size:12.5px;color:#9A9A8F;margin-top:24px;padding-top:16px;border-top:1px solid #E5E3DB;">
-      Whenever you get a chance:
-      <a href="https://www.hdenta.com/api/auth/verify-email?token=${token}" style="color:#3D7A6E;">verify your email address</a>.
-      No rush -- everything above already works either way.
-    </p>
-  `;
 }

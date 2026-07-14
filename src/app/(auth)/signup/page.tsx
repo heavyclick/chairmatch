@@ -94,9 +94,12 @@ function SignupForm() {
     }
 
     // Confirmation is off (or this account was auto-confirmed) --
-    // there's a real session right now, so it's safe to send the
-    // welcome email and go straight into onboarding.
-    fetch("/api/auth/welcome", { method: "POST" }).catch(() => {});
+    // there's a real session right now. Sends the low-key confirmation
+    // email (optional to click, doesn't block anything) and goes
+    // straight into onboarding -- the welcome email fires later, at
+    // actual onboarding completion, not here (see
+    // src/app/onboarding/owner/page.tsx and .../candidate/page.tsx).
+    fetch("/api/auth/send-confirmation", { method: "POST" }).catch(() => {});
     window.location.href =
       accountType === "owner" ? "/onboarding/owner" : "/onboarding/candidate";
   }

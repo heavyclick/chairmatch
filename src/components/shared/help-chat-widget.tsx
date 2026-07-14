@@ -12,9 +12,24 @@ interface ChatMessage {
  * Floating help-chat widget -- available on both owner and candidate
  * layouts. Collapsed to a bubble by default so it doesn't compete with
  * the actual product UI; expands to a full chat panel on click.
+ *
+ * Position: bottom-right on desktop, but middle-right on mobile --
+ * bottom-right on mobile used to sit directly on top of the fixed
+ * bottom nav's rightmost item ("More"), making it unreachable.
+ *
+ * Dismissal: previously there was no way to fully remove the bubble
+ * from screen, only collapse an open panel back to it -- the bubble
+ * itself was permanent. Now a small X on the bubble hides it entirely
+ * for this browser (localStorage, not just this session) -- support is
+ * still reachable afterward via the Support tab (desktop sidebar) or
+ * Settings -> Support (mobile "More"), both of which dispatch the same
+ * "Hdenta:open-help-chat" event this widget already listens for, so
+ * dismissing here doesn't remove support access, just the floating
+ * bubble nagging for attention.
  */
 export function HelpChatWidget({ accountType }: { accountType: "owner" | "candidate" }) {
   const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(true); // default true until localStorage read completes, to avoid a flash of the bubble before we know
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -26,16 +41,35 @@ export function HelpChatWidget({ accountType }: { accountType: "owner" | "candid
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Lets other pages (e.g. the Support sidebar page) open this
-  // floating widget programmatically, since it's mounted once at the
-  // layout level and has no other way to be triggered externally.
+  // Read the persisted dismiss state once on mount -- defaults to
+  // "not dismissed" (bubble shows) unless the user has explicitly
+  // hidden it before on this browser.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is only readable client-side post-mount, can't be part of initial state during SSR
+    setDismissed(localStorage.getItem("Hdenta:help-chat-dismissed") === "true");
+  }, []);
+
+  // Lets other pages (e.g. the Support sidebar page, or Settings on
+  // mobile) open this floating widget programmatically, since it's
+  // mounted once at the layout level and has no other way to be
+  // triggered externally. Also un-dismisses it -- otherwise someone
+  // who dismissed the bubble could never reach chat again even via
+  // the explicit Support entry point, which defeats the point of
+  // still offering that path after dismissal.
   useEffect(() => {
     function handleOpenRequest() {
+      setDismissed(false);
       setOpen(true);
     }
     window.addEventListener("Hdenta:open-help-chat", handleOpenRequest);
     return () => window.removeEventListener("Hdenta:open-help-chat", handleOpenRequest);
   }, []);
+
+  function dismiss() {
+    localStorage.setItem("Hdenta:help-chat-dismissed", "true");
+    setDismissed(true);
+    setOpen(false);
+  }
 
   // PAUSED (AI Pro tier): "Talk to a human" is gated on subscription_tier
   // === "pro", which is currently unreachable through any live purchase
@@ -110,27 +144,43 @@ export function HelpChatWidget({ accountType }: { accountType: "owner" | "candid
     }
   }
 
+  if (dismissed) {
+    return null;
+  }
+
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-teal text-white shadow-lg flex items-center justify-center hover:bg-teal-deep transition-colors"
-        title="Get help"
-      >
-        <MessageCircle size={20} />
-      </button>
+      <div className="fixed z-40 top-1/2 -translate-y-1/2 right-4 md:top-auto md:translate-y-0 md:bottom-5 md:right-5 flex flex-col md:flex-row items-center gap-1.5">
+        <button
+          onClick={() => setOpen(true)}
+          className="w-12 h-12 rounded-full bg-teal text-white shadow-lg flex items-center justify-center hover:bg-teal-deep transition-colors"
+          title="Get help"
+        >
+          <MessageCircle size={20} />
+        </button>
+        <button
+          onClick={dismiss}
+          className="w-6 h-6 rounded-full bg-ink/80 text-white flex items-center justify-center hover:bg-ink transition-colors"
+          title="Hide this -- find Support in the menu if you need it later"
+          aria-label="Dismiss help bubble"
+        >
+          <X size={12} />
+        </button>
+      </div>
     );
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-40 w-[calc(100vw-2.5rem)] max-w-sm h-[70vh] max-h-[520px] bg-bg-raised border border-line rounded-2xl shadow-xl flex flex-col overflow-hidden">
+    <div className="fixed z-40 top-1/2 -translate-y-1/2 right-4 left-4 md:top-auto md:translate-y-0 md:left-auto md:bottom-5 md:right-5 md:w-full md:max-w-sm h-[70vh] max-h-[520px] bg-bg-raised border border-line rounded-2xl shadow-xl flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-ink text-white">
         <span className="text-[14px] font-semibold flex items-center gap-2">
           <LifeBuoy size={15} /> Hdenta Help
         </span>
-        <button onClick={() => setOpen(false)} aria-label="Close">
-          <X size={17} />
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setOpen(false)} aria-label="Collapse" title="Collapse">
+            <X size={17} />
+          </button>
+        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">

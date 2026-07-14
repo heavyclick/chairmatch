@@ -6,15 +6,19 @@ import { ownerWelcomeEmailHtml, candidateWelcomeEmailHtml } from "@/lib/email/te
 /**
  * POST /api/auth/welcome
  *
- * Called once, right after signup (see src/app/(auth)/signup/page.tsx),
- * immediately after the profiles row is successfully created. Sends a
- * welcome email from the Hdenta domain via Resend (src/lib/email/
- * resend.ts) -- previously nothing sent this at all.
+ * Called at the END of onboarding now (see src/app/onboarding/owner
+ * /page.tsx and .../candidate/page.tsx's final "Go to your dashboard"
+ * button), not at signup -- previously this fired immediately after
+ * account creation, before practice_profiles/candidate_profiles even
+ * existed, so it could never be personalized and landed before anyone
+ * had actually finished setting anything up. The separate, brief
+ * confirmation email (src/app/api/auth/send-confirmation/route.ts)
+ * covers the signup moment instead.
  *
- * Fire-and-forget by design: the signup page doesn't await this before
- * redirecting into onboarding, and this route doesn't throw on email
+ * Fire-and-forget by design: callers don't await this before
+ * redirecting to the dashboard, and this route doesn't throw on email
  * failure -- a slow or failed welcome email should never block or
- * break someone finishing account setup. sendEmail() itself already
+ * break someone finishing onboarding. sendEmail() itself already
  * fails soft (logs, doesn't throw) if RESEND_API_KEY isn't set.
  *
  * No body needed -- reads account_type and name straight from the
@@ -30,7 +34,7 @@ export async function POST() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("account_type, email, email_verification_token")
+    .select("account_type, email")
     .eq("id", authData.user.id)
     .single();
 
@@ -48,8 +52,8 @@ export async function POST() {
 
       await sendEmail({
         to: profile.email,
-        subject: "Welcome to Hdenta",
-        html: ownerWelcomeEmailHtml(practice?.practice_name ?? null, profile.email_verification_token),
+        subject: "You're all set up",
+        html: ownerWelcomeEmailHtml(practice?.practice_name ?? null),
       });
     } else {
       const { data: candidate } = await supabase
@@ -61,11 +65,11 @@ export async function POST() {
       await sendEmail({
         to: profile.email,
         subject: "Welcome to Hdenta",
-        html: candidateWelcomeEmailHtml(candidate?.full_name ?? null, profile.email_verification_token),
+        html: candidateWelcomeEmailHtml(candidate?.full_name ?? null),
       });
     }
   } catch (err) {
-    // Never let a welcome-email failure look like a signup failure.
+    // Never let a welcome-email failure look like an onboarding failure.
     console.error("[/api/auth/welcome] send failed:", err);
   }
 

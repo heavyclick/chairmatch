@@ -928,7 +928,22 @@ function CandidateOnboardingForm() {
       title="You're in."
       subtitle="Your profile is live. We'll let you know the moment a practice views or messages you."
       footer={
-        <PrimaryButton onClick={() => (window.location.href = "/candidate/dashboard")}>
+        <PrimaryButton
+          onClick={() => {
+            // Welcome email now fires here, at real onboarding
+            // completion, instead of at signup -- previously it fired
+            // immediately after account creation, before
+            // candidate_profiles existed, so it could never be
+            // personalized with the candidate's name. Guarded on
+            // !isEditMode so re-editing an already-live profile through
+            // this same UI never re-sends a "welcome" email to an
+            // existing user. Fire-and-forget, never blocks the redirect.
+            if (!isEditMode) {
+              fetch("/api/auth/welcome", { method: "POST" }).catch(() => {});
+            }
+            window.location.href = "/candidate/dashboard";
+          }}
+        >
           Go to your dashboard
         </PrimaryButton>
       }

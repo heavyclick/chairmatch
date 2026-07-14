@@ -1,41 +1,59 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell } from "lucide-react";
 import { OwnerSidebar } from "@/components/owner/owner-sidebar";
 import { OwnerTopbar } from "@/components/owner/owner-topbar";
 import { MobileNavItem } from "@/components/owner/mobile-nav-item";
 import { SharePopupTracker } from "@/components/shared/share-popup";
 import { HelpChatWidget } from "@/components/shared/help-chat-widget";
+import { NotificationBell } from "@/components/shared/notification-bell";
+import { ProfileMenu } from "@/components/shared/profile-menu";
+import { createClient } from "@/lib/supabase/client";
 
 export default function OwnerLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      const { data: practice } = await supabase
+        .from("practice_profiles")
+        .select("photo_url")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      setPhotoUrl(practice?.photo_url ?? null);
+    });
+  }, []);
+
   return (
     <div className="flex min-h-screen">
       <SharePopupTracker accountType="owner" />
       <HelpChatWidget accountType="owner" />
       <OwnerSidebar />
 
-      {/* MOBILE TOPBAR */}
+      {/* MOBILE TOPBAR -- logo now points into the app (this layout only
+          ever renders for an already-authenticated owner, so there's no
+          reason it should ever send them back out to the marketing
+          homepage), and the profile icon is a real ProfileMenu now
+          (photo + logout) instead of a dead-end link with no way to
+          log out from. The bell was previously a static, non-functional
+          placeholder -- now the real NotificationBell. */}
       <header className="md:hidden fixed top-0 inset-x-0 z-30 flex items-center justify-between bg-ink px-5 py-3.5">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href="/owner/dashboard" className="flex items-center gap-2">
           <span className="w-[7px] h-[7px] rounded-full bg-coral" />
           <span className="font-serif text-base font-semibold text-white">
             Hdenta
           </span>
         </Link>
         <div className="flex items-center gap-2.5">
-          <button className="relative w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white">
-            <Bell size={15} />
-            <span className="absolute top-1.5 right-1.5 w-[7px] h-[7px] rounded-full bg-coral ring-2 ring-ink" />
-          </button>
-          <Link
-            href="/owner/profile"
-            className="w-9 h-9 rounded-full bg-teal flex items-center justify-center text-white text-[13px] font-semibold"
-          >
-            <span className="sr-only">Your profile</span>
-          </Link>
+          <NotificationBell dark />
+          <ProfileMenu profileHref="/owner/profile" photoUrl={photoUrl} dark />
         </div>
       </header>
 

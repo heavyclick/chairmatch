@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   Building2,
   UserRound,
@@ -11,8 +12,29 @@ import {
 } from "lucide-react";
 import { SiteHeader } from "@/components/marketing/site-header";
 import { SiteFooter } from "@/components/marketing/site-footer";
+import { createClient } from "@/lib/supabase/server";
 
-export default function Home() {
+export default async function Home() {
+  // Previously this page had zero session awareness -- a logged-in
+  // owner or candidate landing on "/" (via the old hardcoded logo
+  // link, a bookmark, or just typing hdenta.com fresh after closing
+  // the browser) always saw the generic marketing page with no
+  // indication they were still logged in, which reads exactly like
+  // "I got logged out" even when the session cookie was perfectly
+  // valid the whole time. Route them straight back into the app instead.
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (authData.user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("account_type")
+      .eq("id", authData.user.id)
+      .maybeSingle();
+    if (profile) {
+      redirect(profile.account_type === "owner" ? "/owner/dashboard" : "/candidate/dashboard");
+    }
+  }
+
   return (
     <div>
       <SiteHeader />

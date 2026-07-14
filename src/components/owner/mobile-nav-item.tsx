@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Star, Mail, Sparkles, Settings, MessageSquare } from "lucide-react";
+import { Home, Search, Star, Mail, Sparkles, Settings, MessageSquare, User } from "lucide-react";
 
-const ICONS = { Home, Search, Star, Mail, Sparkles, Settings, MessageSquare };
+const ICONS = { Home, Search, Star, Mail, Sparkles, Settings, MessageSquare, User };
 
 export function MobileNavItem({
   icon,

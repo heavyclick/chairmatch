@@ -568,7 +568,23 @@ function OwnerOnboardingForm() {
       title="You're set up."
       subtitle="Your practice profile is live."
       footer={
-        <PrimaryButton onClick={() => (window.location.href = "/owner/dashboard")}>
+        <PrimaryButton
+          onClick={() => {
+            // Welcome email now fires here, at real onboarding
+            // completion, instead of at signup -- previously it fired
+            // immediately after account creation, before
+            // practice_profiles existed, so it could never be
+            // personalized with the practice name. Guarded on
+            // !isEditMode so re-editing an already-live profile through
+            // this same UI never re-sends a "welcome" email to an
+            // existing user. Fire-and-forget, same as before: never
+            // block the redirect on it.
+            if (!isEditMode) {
+              fetch("/api/auth/welcome", { method: "POST" }).catch(() => {});
+            }
+            window.location.href = "/owner/dashboard";
+          }}
+        >
           Go to your dashboard
         </PrimaryButton>
       }

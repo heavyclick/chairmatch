@@ -1,6 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Fraunces } from "next/font/google";
 import "./globals.css";
+
+// Was missing entirely -- without an explicit viewport export, Next.js
+// doesn't guarantee `width=device-width, initial-scale=1` gets set, and
+// mobile browsers fall back to rendering the page at a fixed desktop-ish
+// width (typically ~980px) and scaling the whole thing down to fit the
+// screen. That's indistinguishable from "everything is too zoomed in" --
+// exactly the reported symptom, and exactly why manually pinching out to
+// ~85% "fixed" it: that was the browser correcting for a viewport it was
+// never told to treat as mobile-width in the first place.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
 
 const inter = Inter({
   variable: "--font-inter",
@@ -17,6 +31,7 @@ const fraunces = Fraunces({
   // optical size so headlines read as a confident serif, not a body font.
   axes: ["opsz"],
 });
+
 
 export const metadata: Metadata = {
   title: "Hdenta — Hire for fit, not just credentials.",

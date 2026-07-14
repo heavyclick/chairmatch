@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MessageSquare, User } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { NotificationBell } from "@/components/shared/notification-bell";
+import { ProfileMenu } from "@/components/shared/profile-menu";
 
 export function OwnerTopbar() {
   const [practiceName, setPracticeName] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -15,10 +17,11 @@ export function OwnerTopbar() {
       if (!data.user) return;
       const { data: practice } = await supabase
         .from("practice_profiles")
-        .select("practice_name")
+        .select("practice_name, photo_url")
         .eq("id", data.user.id)
         .maybeSingle();
       setPracticeName(practice?.practice_name ?? null);
+      setPhotoUrl(practice?.photo_url ?? null);
     });
   }, []);
 
@@ -32,18 +35,7 @@ export function OwnerTopbar() {
         <MessageSquare size={15} />
       </Link>
       <NotificationBell />
-      <Link
-        href="/owner/profile"
-        className="flex items-center gap-2 pl-1 pr-3 h-9 rounded-full bg-bg-raised border border-line hover:border-teal transition-colors"
-        title="Your profile"
-      >
-        <div className="w-7 h-7 rounded-full bg-teal flex items-center justify-center text-white text-[11px] font-semibold shrink-0">
-          <User size={13} />
-        </div>
-        {practiceName && (
-          <span className="text-[13px] font-semibold max-w-[140px] truncate">{practiceName}</span>
-        )}
-      </Link>
+      <ProfileMenu profileHref="/owner/profile" photoUrl={photoUrl} label={practiceName} />
     </div>
   );
 }
