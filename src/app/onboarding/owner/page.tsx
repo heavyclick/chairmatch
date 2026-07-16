@@ -10,7 +10,7 @@ import { AiWritingAssist } from "@/components/shared/ai-writing-assist";
 import { AvailabilityPicker, type DayAvailability } from "@/components/shared/availability-picker";
 import { PhotoUpload } from "@/components/shared/photo-upload";
 import { GalleryUpload, type GalleryPhoto } from "@/components/shared/gallery-upload";
-import { SOFTWARE_OPTIONS, SPECIALTY_OPTIONS, US_STATES } from "@/lib/constants";
+import { SOFTWARE_OPTIONS, SPECIALTY_OPTIONS, US_STATES, BENEFIT_OPTIONS } from "@/lib/constants";
 
 const TOTAL_STEPS = 7;
 
@@ -31,6 +31,9 @@ interface FormState {
   idealStaffText: string;
   galleryPhotos: GalleryPhoto[];
   googleReviewUrl: string;
+  websiteUrl: string;
+  benefits: string[];
+  customBenefits: string[];
 }
 
 const INITIAL_STATE: FormState = {
@@ -50,6 +53,9 @@ const INITIAL_STATE: FormState = {
   idealStaffText: "",
   galleryPhotos: [],
   googleReviewUrl: "",
+  websiteUrl: "",
+  benefits: [],
+  customBenefits: [],
 };
 
 const PRACTICE_TYPES = [
@@ -164,6 +170,13 @@ function OwnerOnboardingForm() {
                 caption: g.caption ?? "",
               })),
             googleReviewUrl: data.profile.google_review_url ?? "",
+            websiteUrl: data.profile.website_url ?? "",
+            benefits: (data.profile.benefits ?? []).filter((b: string) =>
+              BENEFIT_OPTIONS.some((opt) => opt.slug === b)
+            ),
+            customBenefits: (data.profile.benefits ?? []).filter(
+              (b: string) => !BENEFIT_OPTIONS.some((opt) => opt.slug === b)
+            ),
           }));
         }
       })
@@ -208,6 +221,8 @@ function OwnerOnboardingForm() {
           idealStaffText: form.idealStaffText,
           galleryPhotos: form.galleryPhotos,
           googleReviewUrl: form.googleReviewUrl,
+          websiteUrl: form.websiteUrl,
+          benefits: [...form.benefits, ...form.customBenefits],
         }),
       });
 
@@ -434,15 +449,15 @@ function OwnerOnboardingForm() {
     );
   }
 
-  // ---------- Step 4: Photos + Google reviews ----------
+  // ---------- Step 4: Photos + website + benefits + Google reviews ----------
   if (step === 4) {
     return (
       <OnboardingShell
         editModeSaveAction={isEditMode ? { onSave: saveAndReturnToHub, saving: submitting } : undefined}
         step={4}
         totalSteps={TOTAL_STEPS}
-        title="Show candidates your practice."
-        subtitle="Team photos, your office, anything that helps someone picture themselves here."
+        title="Show candidates what it's like to work here."
+        subtitle="Photos, your site, and what you actually offer -- this is what makes someone say yes."
         footer={
           <>
             <PrimaryButton onClick={() => setStep(5)}>Continue</PrimaryButton>
@@ -453,6 +468,33 @@ function OwnerOnboardingForm() {
         <div className="mb-6">
           <p className="text-[13px] font-semibold text-ink-soft mb-2.5">Photos</p>
           <GalleryUpload value={form.galleryPhotos} onChange={(v) => update("galleryPhotos", v)} />
+        </div>
+
+        <div className="mb-6">
+          <p className="text-[13px] font-semibold text-ink-soft mb-1.5">Practice website <span className="text-ink-faint font-normal">(optional)</span></p>
+          <p className="text-[12px] text-ink-faint mb-2.5">
+            We&apos;ll link to it from your profile, alongside your Google rating below -- not instead of it.
+          </p>
+          <input
+            placeholder="https://yourpractice.com"
+            value={form.websiteUrl}
+            onChange={(e) => update("websiteUrl", e.target.value)}
+            className={inputClass}
+          />
+        </div>
+
+        <div className="mb-6">
+          <p className="text-[13px] font-semibold text-ink-soft mb-1.5">Benefits <span className="text-ink-faint font-normal">(optional)</span></p>
+          <p className="text-[12px] text-ink-faint mb-2.5">
+            What a hire actually gets working here -- vacation, bonuses, insurance, whatever&apos;s real.
+          </p>
+          <ChipSelectWithOther
+            options={BENEFIT_OPTIONS}
+            selected={form.benefits}
+            onChange={(v) => update("benefits", v)}
+            customValues={form.customBenefits}
+            onCustomChange={(v) => update("customBenefits", v)}
+          />
         </div>
 
         <div>

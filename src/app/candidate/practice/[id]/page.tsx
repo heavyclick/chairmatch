@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, MapPin, Stethoscope, Wrench, Star, Calendar, Building2 } from "lucide-react";
-import { DAYS_OF_WEEK } from "@/lib/constants";
+import { DAYS_OF_WEEK, BENEFIT_OPTIONS } from "@/lib/constants";
 import { SkillChips } from "@/components/shared/skill-chips";
 
 const PRACTICE_TYPE_LABELS: Record<string, string> = {
@@ -25,6 +25,8 @@ interface PracticeProfile {
   google_review_url: string | null;
   google_rating: number | null;
   google_rating_count: number | null;
+  website_url: string | null;
+  benefits: string[] | null;
   ai_practice_chips: string[] | null;
   locations?: { city: string; state: string; operating_hours?: { day: number; startTime: string; endTime: string }[] }[];
   software?: { software_tags: { label: string } }[];
@@ -113,6 +115,16 @@ export default function PracticeProfileViewPage() {
               </span>
             </a>
           )}
+          {practice.website_url && (
+            <a
+              href={practice.website_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 mt-2 text-[12.5px] font-semibold text-teal-deep"
+            >
+              Visit website &rarr;
+            </a>
+          )}
           {practice.ai_practice_chips && practice.ai_practice_chips.length > 0 && (
             <div className="mt-2">
               <SkillChips chips={practice.ai_practice_chips} />
@@ -161,6 +173,23 @@ export default function PracticeProfileViewPage() {
               What&apos;s genuinely hard about this job
             </p>
             <p className="text-[15px] leading-relaxed text-ink">{practice.honest_challenges_text}</p>
+          </div>
+        )}
+        {practice.benefits && practice.benefits.length > 0 && (
+          <div className="rounded-2xl border border-line p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint mb-3">
+              Benefits
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {practice.benefits.map((b) => (
+                <span
+                  key={b}
+                  className="text-[12.5px] font-medium text-ink bg-bg-raised border border-line px-2.5 py-1.5 rounded-lg"
+                >
+                  {BENEFIT_OPTIONS.find((opt) => opt.slug === b)?.label ?? b}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </div>

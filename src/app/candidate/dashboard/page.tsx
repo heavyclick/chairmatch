@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Eye, MessageSquare, Sparkles, User } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { EMPLOYMENT_TYPES } from "@/lib/constants";
 
 const STATUS_LABELS = {
   actively_looking: { label: "Actively looking", color: "bg-teal-tint text-teal-deep" },
@@ -20,7 +21,7 @@ export default async function CandidateDashboardPage() {
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
 
-  let profile: { full_name: string; visibility_status: keyof typeof STATUS_LABELS; profile_completeness_score: number; updated_at: string } | null = null;
+  let profile: { full_name: string; visibility_status: keyof typeof STATUS_LABELS; profile_completeness_score: number; updated_at: string; employment_types: string[] } | null = null;
   let threadCount = 0;
   let viewersThisWeek: { viewer_practice_id: string; practice: { practice_name: string; photo_url: string | null } | null }[] = [];
   let totalViewsThisWeek = 0;
@@ -28,7 +29,7 @@ export default async function CandidateDashboardPage() {
   if (authData.user) {
     const { data } = await supabase
       .from("candidate_profiles")
-      .select("full_name, visibility_status, profile_completeness_score, updated_at")
+      .select("full_name, visibility_status, profile_completeness_score, updated_at, employment_types")
       .eq("id", authData.user.id)
       .maybeSingle();
     profile = data;
@@ -93,6 +94,34 @@ export default async function CandidateDashboardPage() {
               ))}
             </div>
           </div>
+
+          {/* Open to -- previously the only way to change "open to
+              part-time" / "open to temp" etc. was going back through
+              full onboarding. Plain checkboxes + a save button, same
+              no-JS form-POST pattern as the status control above. */}
+          <form action="/api/candidate/employment-types" method="POST" className="rounded-2xl border border-line bg-bg-raised p-5 mb-6">
+            <p className="text-[13px] font-semibold text-ink-soft mb-3">Open to</p>
+            <div className="flex flex-wrap gap-4 mb-3">
+              {EMPLOYMENT_TYPES.map((type) => (
+                <label key={type.slug} className="flex items-center gap-2 text-[13.5px] text-ink cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="employment_types"
+                    value={type.slug}
+                    defaultChecked={profile!.employment_types?.includes(type.slug)}
+                    className="w-4 h-4 rounded border-line accent-teal"
+                  />
+                  {type.label}
+                </label>
+              ))}
+            </div>
+            <button
+              type="submit"
+              className="text-[12.5px] font-semibold text-teal-deep hover:underline"
+            >
+              Save
+            </button>
+          </form>
 
           {/* This week stats -- profile views are now clickable, showing
               WHO viewed (practice name + link to their profile), not

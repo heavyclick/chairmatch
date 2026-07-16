@@ -12,6 +12,8 @@ import { PhotoUpload } from "@/components/shared/photo-upload";
 import {
   ROLES,
   SOFTWARE_OPTIONS,
+  CLINICAL_SKILLS_BY_ROLE,
+  CERTIFICATIONS_BY_ROLE,
   DEALBREAKER_OPTIONS,
   EMPLOYMENT_TYPES,
   US_STATES,
@@ -45,7 +47,8 @@ interface FormState {
   collectionsNote: string;
   yearsExperience: string;
   university: string;
-  certifications: string;
+  certifications: string[];
+  customCertifications: string[];
   ceCourses: string;
   skills: string;
   hobbies: string;
@@ -81,7 +84,8 @@ const INITIAL_STATE: FormState = {
   collectionsNote: "",
   yearsExperience: "",
   university: "",
-  certifications: "",
+  certifications: [],
+  customCertifications: [],
   ceCourses: "",
   skills: "",
   hobbies: "",
@@ -234,7 +238,7 @@ function CandidateOnboardingForm() {
           collectionsNote: form.collectionsNote || null,
           yearsExperience: form.yearsExperience,
           university: form.university,
-          certifications: splitList(form.certifications),
+          certifications: [...form.certifications, ...form.customCertifications],
           ceCourses: splitList(form.ceCourses),
           skills: splitList(form.skills),
           hobbies: splitList(form.hobbies),
@@ -544,10 +548,12 @@ function CandidateOnboardingForm() {
         />
 
         <p className="text-[13px] font-semibold text-ink-soft mb-2.5">
-          Practice software you&apos;ve used:
+          {CLINICAL_SKILLS_BY_ROLE[form.primaryRole[0]]
+            ? "Equipment & techniques you're familiar with:"
+            : "Practice software you've used:"}
         </p>
         <ChipSelectWithOther
-          options={SOFTWARE_OPTIONS}
+          options={CLINICAL_SKILLS_BY_ROLE[form.primaryRole[0]] ?? SOFTWARE_OPTIONS}
           selected={form.software}
           onChange={(v) => update("software", v)}
           customValues={form.customSoftware}
@@ -726,11 +732,15 @@ function CandidateOnboardingForm() {
           onChange={(e) => update("university", e.target.value)}
           className={inputClass + " mb-3"}
         />
-        <input
-          placeholder="Certifications (comma separated)"
-          value={form.certifications}
-          onChange={(e) => update("certifications", e.target.value)}
-          className={inputClass + " mb-3"}
+        <p className="text-[13px] font-semibold text-ink-soft mb-2.5 mt-3">
+          Certifications:
+        </p>
+        <ChipSelectWithOther
+          options={CERTIFICATIONS_BY_ROLE[form.primaryRole[0]] ?? []}
+          selected={form.certifications}
+          onChange={(v) => update("certifications", v)}
+          customValues={form.customCertifications}
+          onCustomChange={(v) => update("customCertifications", v)}
         />
         <input
           placeholder="CE courses / training completed (comma separated)"

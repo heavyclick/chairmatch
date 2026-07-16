@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
     honestChallengesText: "honest_challenges_text",
     idealStaffText: "ideal_staff_text",
     googleReviewUrl: "google_review_url",
+    websiteUrl: "website_url",
+    benefits: "benefits",
   };
   for (const [bodyKey, column] of Object.entries(directFieldMap)) {
     if (body[bodyKey] !== undefined) profileUpdate[column] = body[bodyKey];

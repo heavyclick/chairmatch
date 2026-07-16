@@ -29,6 +29,7 @@ export async function GET(
       `practice_name, photo_url, practice_type, specialty, culture_text,
        thrive_text, honest_challenges_text, ideal_staff_text,
        google_review_url, google_rating, google_rating_count,
+       website_url, benefits,
        ai_practice_chips,
        locations:practice_locations(city, state, operating_hours),
        software:practice_software(software_tags(*)),
