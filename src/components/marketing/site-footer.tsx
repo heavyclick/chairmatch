@@ -61,6 +61,11 @@ export function SiteFooter() {
                 How it works
               </Link>
             </li>
+            <li>
+              <Link href="/jobs" className="hover:text-ink transition-colors">
+                Browse jobs
+              </Link>
+            </li>
           </ul>
         </div>
 

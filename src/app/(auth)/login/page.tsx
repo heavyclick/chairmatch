@@ -1,10 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+/**
+ * Safe redirect validation -- only ever follows a relative, in-app
+ * path (must start with "/", never "//"  which browsers treat as
+ * protocol-relative to an external host). Without this check,
+ * ?redirect=https://evil.com or ?redirect=//evil.com would let anyone
+ * craft a Hdenta login link that phishes a user and then silently
+ * ships them off-site right after they type their real password in.
+ */
+function safeRedirect(value: string | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+}
+
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const redirect = safeRedirect(searchParams.get("redirect"));
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +78,12 @@ export default function LoginPage() {
       return;
     }
 
-    window.location.href = profile.account_type === "owner" ? "/owner/dashboard" : "/candidate/dashboard";
+    // A ?redirect= (e.g. from a locked "Apply" button on a public job
+    // posting, or a locked "Message" button on a public candidate
+    // profile teaser) takes priority over the default dashboard --
+    // that's the whole point of preserving it, landing someone back on
+    // exactly what they were trying to do before hitting the auth gate.
+    window.location.href = redirect ?? (profile.account_type === "owner" ? "/owner/dashboard" : "/candidate/dashboard");
   }
 
   return (
@@ -103,7 +134,7 @@ export default function LoginPage() {
 
         <p className="text-center text-[13px] text-ink-faint mt-5">
           No account?{" "}
-          <Link href="/signup" className="text-teal-deep font-semibold">
+          <Link href={redirect ? `/signup?redirect=${encodeURIComponent(redirect)}` : "/signup"} className="text-teal-deep font-semibold">
             Sign up
           </Link>
         </p>

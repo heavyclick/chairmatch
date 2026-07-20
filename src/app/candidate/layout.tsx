@@ -81,7 +81,7 @@ export default function CandidateLayout({ children }: { children: React.ReactNod
           -- see src/app/candidate/settings/page.tsx). */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-bg-raised border-t border-line px-2 pt-2 pb-[max(10px,env(safe-area-inset-bottom))] flex justify-around">
         <MobileNavItem icon="Home" label="Home" href="/candidate/dashboard" />
-        <MobileNavItem icon="Search" label="Practices" href="/candidate/practices" />
+        <MobileNavItem icon="Search" label="Jobs" href="/jobs" />
         <MobileNavItem icon="MessageSquare" label="Messages" href="/candidate/messages" />
         <MobileNavItem icon="User" label="Profile" href="/candidate/profile" />
         <MobileNavItem icon="Settings" label="More" href="/candidate/settings" />

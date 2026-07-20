@@ -158,6 +158,19 @@ function OwnerOnboardingForm() {
             zip: data.profile.locations?.[0]?.zip ?? "",
             practiceType: data.profile.practice_type ? [data.profile.practice_type] : [],
             specialty: data.profile.specialty ? [data.profile.specialty] : [],
+            // CONFIRMED BUG, now fixed: software and workdays were
+            // missing from this prefill entirely, same class of issue
+            // as the candidate onboarding's mapProfileToForm -- since
+            // persistProfile() sends the full form on every save,
+            // editing any single section silently wiped out whatever
+            // software/workdays were already saved.
+            software: (data.profile.software ?? [])
+              .map((s: { software_tags: { slug: string } }) => s.software_tags.slug)
+              .filter((slug: string) => SOFTWARE_OPTIONS.some((o) => o.slug === slug)),
+            customSoftware: (data.profile.software ?? [])
+              .map((s: { software_tags: { slug: string } }) => s.software_tags.slug)
+              .filter((slug: string) => !SOFTWARE_OPTIONS.some((o) => o.slug === slug)),
+            workdays: data.profile.locations?.[0]?.operating_hours ?? [],
             cultureText: data.profile.culture_text ?? "",
             thriveText: data.profile.thrive_text ?? "",
             honestChallengesText: data.profile.honest_challenges_text ?? "",
@@ -624,7 +637,10 @@ function OwnerOnboardingForm() {
             if (!isEditMode) {
               fetch("/api/auth/welcome", { method: "POST" }).catch(() => {});
             }
-            window.location.href = "/owner/dashboard";
+            const redirectParam = searchParams.get("redirect");
+            const safeRedirect =
+              redirectParam && redirectParam.startsWith("/") && !redirectParam.startsWith("//") ? redirectParam : null;
+            window.location.href = safeRedirect ?? "/owner/dashboard";
           }}
         >
           Go to your dashboard

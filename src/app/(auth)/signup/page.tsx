@@ -29,6 +29,12 @@ export default function SignupPage() {
 function SignupForm() {
   const searchParams = useSearchParams();
   const typeParam = searchParams.get("type");
+  // Same safe-redirect validation as the login page -- only ever a
+  // relative in-app path, never an external URL, so a crafted
+  // ?redirect= link can't ship someone off-site right after signup.
+  const redirectParam = searchParams.get("redirect");
+  const safeRedirect =
+    redirectParam && redirectParam.startsWith("/") && !redirectParam.startsWith("//") ? redirectParam : null;
   const arrivedWithType = typeParam === "owner" || typeParam === "candidate";
 
   const [accountType, setAccountType] = useState<AccountType | null>(
@@ -99,9 +105,13 @@ function SignupForm() {
     // straight into onboarding -- the welcome email fires later, at
     // actual onboarding completion, not here (see
     // src/app/onboarding/owner/page.tsx and .../candidate/page.tsx).
+    // A ?redirect= (e.g. from a locked Apply/Message button) rides
+    // along into onboarding too, so someone arriving this way lands on
+    // what they were actually trying to do once onboarding is done,
+    // not just the generic dashboard.
     fetch("/api/auth/send-confirmation", { method: "POST" }).catch(() => {});
-    window.location.href =
-      accountType === "owner" ? "/onboarding/owner" : "/onboarding/candidate";
+    const onboardingPath = accountType === "owner" ? "/onboarding/owner" : "/onboarding/candidate";
+    window.location.href = safeRedirect ? `${onboardingPath}?redirect=${encodeURIComponent(safeRedirect)}` : onboardingPath;
   }
 
   if (checkEmail) {

@@ -69,7 +69,7 @@ export function CandidateSidebarNav() {
     <nav className="flex-1">
       <SidebarLink icon={Home} label="Dashboard" href="/candidate/dashboard" />
       <SidebarLink icon={User} label="My Profile" href="/candidate/profile" />
-      <SidebarLink icon={Building2} label="Browse Practices" href="/candidate/practices" />
+      <SidebarLink icon={Building2} label="Browse Jobs" href="/jobs" />
       <SidebarLink icon={MessageSquare} label="Messages" href="/candidate/messages" badgeCount={unreadMessageCount} />
       <SidebarLink icon={LifeBuoy} label="Support" href="/candidate/support" />
       <SidebarLink icon={Settings} label="Settings" href="/candidate/settings" />

@@ -951,7 +951,13 @@ function CandidateOnboardingForm() {
             if (!isEditMode) {
               fetch("/api/auth/welcome", { method: "POST" }).catch(() => {});
             }
-            window.location.href = "/candidate/dashboard";
+            // A ?redirect= surviving from signup (a locked Apply/Message
+            // button someone clicked before ever having an account)
+            // takes priority over the default dashboard.
+            const redirectParam = searchParams.get("redirect");
+            const safeRedirect =
+              redirectParam && redirectParam.startsWith("/") && !redirectParam.startsWith("//") ? redirectParam : null;
+            window.location.href = safeRedirect ?? "/candidate/dashboard";
           }}
         >
           Go to your dashboard
@@ -975,10 +981,50 @@ function splitList(value: string): string[] {
 // Maps the GET /api/candidate/profile/me response shape back into form
 // state, for the "edit existing profile" case. Best-effort -- any field
 // not present just keeps its initial value.
+// CONFIRMED BUG, now fixed: this function only ever mapped 15 of the
+// 33 fields in FormState (missing primaryRole, aliasRoles,
+// collectionsPercent/Note, certifications, ceCourses/skills/hobbies,
+// software, workHistory, availability, idealPractice, dealbreakers --
+// over half the form). Since edit mode always starts from
+// INITIAL_STATE and only overlays whatever this function returns, any
+// field missing here silently reverted to blank/empty on load -- and
+// since persistProfile() sends the FULL form state on every save, hitting
+// Save while editing literally any single section overwrote all of
+// these other fields with blanks in the database. This is why editing
+// a profile looked like "save doesn't work" -- it saved, but wiped
+// out most of what was already there in the same request.
 function mapProfileToForm(profile: Record<string, unknown>): Partial<FormState> {
+  const role = profile.role as { slug?: string } | null;
+  const aliasTags = (profile.alias_tags as { role_aliases: { slug: string } }[] | null) ?? [];
+  const softwareRows = (profile.software as { software_tags: { slug: string } }[] | null) ?? [];
+  const dealbreakerRows = (profile.dealbreakers as { dealbreaker_tags: { slug: string } }[] | null) ?? [];
+  const availabilityRows =
+    (profile.availability as { day_of_week: number; start_time: string; end_time: string }[] | null) ?? [];
+  const workHistoryRows =
+    (profile.work_history as
+      | { employer_name: string; role_title: string | null; company_website: string | null; start_date: string | null; end_date: string | null }[]
+      | null) ?? [];
+
+  // certifications/software are stored as one flat list -- split back
+  // into "matches a known chip option" vs "custom, free-typed entry"
+  // so each half goes back into the right form field, same split the
+  // UI presents them with.
+  const allKnownCertSlugs = new Set(
+    Object.values(CERTIFICATIONS_BY_ROLE).flatMap((list) => list.map((o) => o.slug))
+  );
+  const allKnownSkillSlugs = new Set([
+    ...SOFTWARE_OPTIONS.map((o) => o.slug),
+    ...Object.values(CLINICAL_SKILLS_BY_ROLE).flatMap((list) => list.map((o) => o.slug)),
+  ]);
+  const certifications = (profile.certifications as string[] | null) ?? [];
+  const softwareSlugs = softwareRows.map((r) => r.software_tags.slug);
+  const dealbreakerSlugs = dealbreakerRows.map((r) => r.dealbreaker_tags.slug);
+
   return {
     fullName: (profile.full_name as string) ?? "",
     photoUrl: (profile.photo_url as string) ?? null,
+    primaryRole: role?.slug ? [role.slug] : [],
+    aliasRoles: aliasTags.map((a) => a.role_aliases.slug),
     city: (profile.city as string) ?? "",
     state: (profile.state as string) ?? "",
     zip: (profile.zip as string) ?? "",
@@ -988,10 +1034,34 @@ function mapProfileToForm(profile: Record<string, unknown>): Partial<FormState> 
     payMin: profile.pay_range_min != null ? String(profile.pay_range_min) : "",
     payMax: profile.pay_range_max != null ? String(profile.pay_range_max) : "",
     payUnit: (profile.pay_unit as "hourly" | "annual" | "custom") ?? "hourly",
+    collectionsPercent: profile.collections_percent != null ? String(profile.collections_percent) : "",
+    collectionsNote: (profile.collections_note as string) ?? "",
     yearsExperience: profile.years_experience != null ? String(profile.years_experience) : "",
     university: (profile.university as string) ?? "",
+    certifications: certifications.filter((c) => allKnownCertSlugs.has(c)),
+    customCertifications: certifications.filter((c) => !allKnownCertSlugs.has(c)),
+    ceCourses: ((profile.ce_courses as string[] | null) ?? []).join(", "),
+    skills: ((profile.skills as string[] | null) ?? []).join(", "),
+    hobbies: ((profile.hobbies as string[] | null) ?? []).join(", "),
+    software: softwareSlugs.filter((s) => allKnownSkillSlugs.has(s)),
+    customSoftware: softwareSlugs.filter((s) => !allKnownSkillSlugs.has(s)),
+    workHistory: workHistoryRows.map((w) => ({
+      employerName: w.employer_name,
+      roleTitle: w.role_title ?? "",
+      companyWebsite: w.company_website ?? "",
+      startDate: w.start_date ?? "",
+      endDate: w.end_date ?? "",
+    })),
+    availability: availabilityRows.map((a) => ({
+      day: a.day_of_week,
+      startTime: a.start_time,
+      endTime: a.end_time,
+    })),
     valueAdd: (profile.value_add_text as string) ?? "",
     futureGoals: (profile.future_goals_text as string) ?? "",
     recoveryScenario: (profile.recovery_scenario_text as string) ?? "",
+    idealPractice: (profile.ideal_practice_text as string) ?? "",
+    dealbreakers: dealbreakerSlugs.filter((d) => DEALBREAKER_OPTIONS.some((o) => o.slug === d)),
+    customDealbreakers: dealbreakerSlugs.filter((d) => !DEALBREAKER_OPTIONS.some((o) => o.slug === d)),
   };
 }
