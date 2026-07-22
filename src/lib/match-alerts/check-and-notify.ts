@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
-import { fetchCandidateForMatching, candidateMatchesFilters, type AlertFilters } from "@/lib/candidate-search/match-filters";
+import {
+  fetchCandidateForMatching,
+  candidateMatchesFilters,
+  alertHasMeaningfulFilters,
+  type AlertFilters,
+} from "@/lib/candidate-search/match-filters";
 import { notifyUser } from "@/lib/notifications/create";
 
 /**
@@ -57,6 +62,18 @@ export async function checkMatchAlertsForCandidate(
   for (const alert of alerts) {
     if (alreadyNotifiedAlertIds.has(alert.id)) continue;
     const filters = (alert.filters ?? {}) as AlertFilters;
+
+    // Skip alerts with no meaningful constraints -- an empty filter
+    // object would match every candidate in the system (every check in
+    // candidateMatchesFilters is guarded by a truthiness test that
+    // passes when the field is absent). candidateMatchesFilters also
+    // has this guard internally, but checking here avoids the
+    // unnecessary fetchCandidateForMatching work for empty alerts.
+    if (!alertHasMeaningfulFilters(filters)) {
+      console.log(`[match-alerts] alert ${alert.id} has no constraints -- skipping (not actionable)`);
+      continue;
+    }
+
     if (!candidateMatchesFilters(candidate, filters, roleIdBySlug)) continue;
     matchCount++;
     await notifyMatch(supabase, alert, candidateId);
@@ -86,6 +103,19 @@ export async function checkExistingCandidatesForNewAlert(
     .single();
   if (!alert) return;
 
+  // Refuse to run an existence-check for an alert with no constraints.
+  // Without this guard, a "Notify me" click with zero filters would
+  // immediately send one notification per actively_looking candidate
+  // in the entire database -- this is the primary cause of the 500+
+  // notification storm reported in production.
+  const filters = (alert.filters ?? {}) as AlertFilters;
+  if (!alertHasMeaningfulFilters(filters)) {
+    console.log(
+      `[match-alerts] alert ${alertId} has no constraints -- skipping existence check (not actionable)`
+    );
+    return;
+  }
+
   const { data: candidates } = await supabase
     .from("candidate_profiles")
     .select("id")
@@ -108,7 +138,6 @@ export async function checkExistingCandidatesForNewAlert(
     const candidate = await fetchCandidateForMatching(supabase, c.id);
     if (!candidate) continue;
 
-    const filters = (alert.filters ?? {}) as AlertFilters;
     if (!candidateMatchesFilters(candidate, filters, roleIdBySlug)) continue;
 
     matchCount++;
@@ -142,10 +171,41 @@ async function notifyMatch(
   alert: { id: string; owner_id: string; label: string | null },
   candidateId: string
 ) {
-  await supabase.from("match_alert_notifications").insert({
-    alert_id: alert.id,
-    candidate_id: candidateId,
-  });
+  // Upsert the dedup record BEFORE sending the notification.
+  // Two things this fixes vs. the original plain .insert():
+  //
+  //   1. Race condition: if this function is invoked concurrently for
+  //      the same (alert, candidate) pair (e.g. a candidate saves their
+  //      profile twice in quick succession), both invocations read the
+  //      dedup table before either writes -- both see "not yet notified"
+  //      and both fire. Upsert with ignoreDuplicates means the second
+  //      write is a no-op rather than a second insert, but more
+  //      importantly: we check the error below and bail out if we
+  //      couldn't write the dedup record, which prevents sending a
+  //      notification we can't track.
+  //
+  //   2. Silent failure: the original code did not check the insert
+  //      error. If the insert failed (constraint violation, network
+  //      blip, etc.) the notification still fired, but no dedup record
+  //      was written -- meaning the next trigger for the same pair
+  //      would re-notify. Now: no dedup record = no notification.
+  const { error: dedupError } = await supabase
+    .from("match_alert_notifications")
+    .upsert(
+      { alert_id: alert.id, candidate_id: candidateId },
+      { onConflict: "alert_id,candidate_id", ignoreDuplicates: true }
+    );
+
+  if (dedupError) {
+    // Could not write the dedup record -- do NOT send the notification.
+    // Sending without a dedup record means we'd re-notify on every
+    // future trigger for this same (alert, candidate) pair.
+    console.error(
+      `[match-alerts] failed to write dedup record for alert ${alert.id} / candidate ${candidateId} -- skipping notification to avoid duplicate storm:`,
+      dedupError
+    );
+    return;
+  }
 
   await notifyUser(supabase, {
     userId: alert.owner_id,
