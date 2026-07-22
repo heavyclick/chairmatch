@@ -13,6 +13,34 @@ const TABS: { slug: EmploymentType; label: string }[] = [
   { slug: "temp", label: "Temp" },
 ];
 
+/**
+ * Returns true if `filters` has at least one meaningful constraint.
+ *
+ * Mirrors alertHasMeaningfulFilters() in
+ * src/lib/candidate-search/match-filters.ts -- kept in sync manually.
+ * If you add a new filter field, update both. This client-side guard
+ * prevents posting an alert with no constraints, which would match
+ * every candidate in the database and fire hundreds of notifications
+ * instantly (the "500+ messages" production incident).
+ */
+function browseFiltersAreActionable(f: BrowseFilters): boolean {
+  return (
+    f.roleSlugs.length > 0 ||
+    !!f.city ||
+    !!f.state ||
+    !!f.zip ||
+    !!f.payMin ||
+    !!f.payMax ||
+    !!f.minYearsExperience ||
+    f.openToRelocationOnly ||
+    f.openToRemoteOnly ||
+    f.softwareSlugs.length > 0 ||
+    f.customSoftware.filter((s) => s.trim()).length > 0 ||
+    f.excludeDealbreakerSlugs.length > 0 ||
+    f.availableDays.length > 0
+  );
+}
+
 export default function BrowsePage() {
   const [tab, setTab] = useState<EmploymentType>("full_time");
   const [filters, setFilters] = useState<BrowseFilters>(DEFAULT_FILTERS);
@@ -23,6 +51,7 @@ export default function BrowsePage() {
   const [error, setError] = useState<string | null>(null);
   const [location, setLocation] = useState({ city: "your area", radiusMiles: 15 });
   const [alertRegistered, setAlertRegistered] = useState(false);
+  const [alertError, setAlertError] = useState<string | null>(null);
 
   // Fetch the practice's REAL saved location on mount, rather than the
   // hardcoded "Houston, TX" this page used to show -- that was a real
@@ -60,6 +89,7 @@ export default function BrowsePage() {
       setLoading(true);
       setError(null);
       setAlertRegistered(false);
+      setAlertError(null);
       try {
         const params = new URLSearchParams();
         params.set("employment_type", tab);
@@ -117,6 +147,38 @@ export default function BrowsePage() {
       ignore = true;
     };
   }, [tab, filters]);
+
+  /**
+   * Creates a match alert for the current filters. Validates that at
+   * least one filter is set before posting -- an empty filter set would
+   * match every candidate in the DB and fire a notification storm.
+   */
+  async function handleCreateAlert() {
+    setAlertError(null);
+
+    if (!browseFiltersAreActionable(filters)) {
+      setAlertError("Set at least one filter (role, location, pay, etc.) before creating an alert.");
+      return;
+    }
+
+    setAlertRegistered(false);
+    const res = await fetch("/api/match-alerts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roleSlug: filters.roleSlugs[0],
+        city: filters.city || location.city,
+        state: filters.state,
+        filters,
+      }),
+    });
+    if (res.ok) {
+      setAlertRegistered(true);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setAlertError(data.error || "Failed to create alert. Please try again.");
+    }
+  }
 
   const filterCount = activeFilterCount(filters);
 
@@ -180,6 +242,12 @@ export default function BrowsePage() {
         </div>
       )}
 
+      {alertError && (
+        <div className="rounded-xl border border-coral/30 bg-coral/5 text-coral-deep text-[13.5px] p-4 mb-5">
+          {alertError}
+        </div>
+      )}
+
       {!loading && !error && results.length === 0 && (
         <div className="rounded-xl border border-dashed border-line p-10 text-center">
           <Search size={22} className="mx-auto text-ink-faint mb-3" />
@@ -188,20 +256,7 @@ export default function BrowsePage() {
             Try widening your distance or clearing a filter -- or get notified the moment someone matching joins.
           </p>
           <button
-            onClick={async () => {
-              setAlertRegistered(false);
-              const res = await fetch("/api/match-alerts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  roleSlug: filters.roleSlugs[0],
-                  city: filters.city || location.city,
-                  state: filters.state,
-                  filters,
-                }),
-              });
-              if (res.ok) setAlertRegistered(true);
-            }}
+            onClick={handleCreateAlert}
             disabled={alertRegistered}
             className="inline-flex items-center gap-2 text-[13.5px] font-semibold text-teal-deep border border-teal/30 bg-teal-tint px-4 py-2.5 rounded-control hover:bg-teal-tint/70 transition-colors disabled:opacity-70"
           >
@@ -235,19 +290,7 @@ export default function BrowsePage() {
               Expand search to {Math.min(location.radiusMiles + 15, 100)} mi
             </button>
             <button
-              onClick={async () => {
-                const res = await fetch("/api/match-alerts", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    roleSlug: filters.roleSlugs[0],
-                    city: filters.city || location.city,
-                    state: filters.state,
-                    filters,
-                  }),
-                });
-                if (res.ok) setAlertRegistered(true);
-              }}
+              onClick={handleCreateAlert}
               disabled={alertRegistered}
               className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-soft border border-line px-4 py-2 rounded-control hover:border-teal transition-colors disabled:opacity-70"
             >
