@@ -100,6 +100,37 @@ export async function fetchCandidateForMatching(
 }
 
 /**
+ * Returns true if `filters` has at least one meaningful constraint set.
+ * An alert stored as `{}` (empty object) would otherwise match every
+ * candidate in the system -- every check in candidateMatchesFilters is
+ * guarded by a truthiness test that silently passes when the field is
+ * absent, so an unconstrained alert falls through to `return true`.
+ *
+ * This guard is the single source of truth for "is this alert
+ * actionable?" -- used both here (server-side matching) and in
+ * browse/page.tsx (client-side, before POSTing the alert) so the two
+ * stay in sync. If you add a new filter field to AlertFilters, add it
+ * here too.
+ */
+export function alertHasMeaningfulFilters(filters: AlertFilters): boolean {
+  return (
+    (filters.roleSlugs?.length ?? 0) > 0 ||
+    !!filters.city ||
+    !!filters.state ||
+    !!filters.zip ||
+    !!filters.payMin ||
+    !!filters.payMax ||
+    !!filters.minYearsExperience ||
+    !!filters.openToRelocationOnly ||
+    !!filters.openToRemoteOnly ||
+    (filters.softwareSlugs?.length ?? 0) > 0 ||
+    (filters.customSoftware?.length ?? 0) > 0 ||
+    (filters.excludeDealbreakerSlugs?.length ?? 0) > 0 ||
+    (filters.availableDays?.length ?? 0) > 0
+  );
+}
+
+/**
  * Evaluates whether `candidate` satisfies `filters`. Deliberately does
  * NOT implement true radius/distance matching (that needs the alert
  * owner's practice lat/lng plus the candidates_within_radius() RPC per
@@ -107,12 +138,22 @@ export async function fetchCandidateForMatching(
  * used as a reasonable approximation for alert-matching purposes. If
  * that ever proves too loose in practice, this is the function to
  * upgrade, not the calling code.
+ *
+ * IMPORTANT: always call alertHasMeaningfulFilters() before calling
+ * this function. An empty `filters` object passes every check below and
+ * returns true, which would match every candidate in the system.
  */
 export function candidateMatchesFilters(
   candidate: MatchableCandidate,
   filters: AlertFilters,
   roleIdBySlug: Map<string, number>
 ): boolean {
+  // Safety net: an alert with no constraints matches everyone -- treat
+  // it as unactionable rather than firing on the entire candidate pool.
+  // Callers should also gate on alertHasMeaningfulFilters() upstream,
+  // but this guard means a missed upstream check can't cause a storm.
+  if (!alertHasMeaningfulFilters(filters)) return false;
+
   if (filters.roleSlugs?.length) {
     const wantedRoleIds = filters.roleSlugs
       .map((slug) => roleIdBySlug.get(slug))
