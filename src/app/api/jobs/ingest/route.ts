@@ -1,118 +1,135 @@
+// src/app/api/jobs/ingest/route.ts
+//
+// Corrected to match actual jobs table column names:
+//   practice_name (not company)
+//   city / state (not location_city / location_state)
+//   source_url (not apply_url)
+//   source_platform (not source)
+//   pay_unit (not pay_period)
+//   posted_date (not posted_at) — type: date string "YYYY-MM-DD"
+//   benefits — jsonb (send as object or array, stored as jsonb)
+//   requirements — jsonb (existing field, now included)
+
+import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/server";
 
-/**
- * POST /api/jobs/ingest
- *
- * Receives daily batches of scraped external job postings from a
- * separate scraper service (runs independently, outside this
- * codebase). Auth is a single shared bearer secret (HDENTA_INGEST_SECRET)
- * -- not Supabase auth at all, since the caller isn't a Hdenta user,
- * it's a trusted external service. Mirrors the same
- * "Authorization: Bearer <secret>" pattern already used for
- * src/app/api/cron/sync-google-ratings/route.ts's Vercel Cron auth,
- * just with a different, dedicated secret.
- *
- * Dedup logic: source_url has a unique constraint at the DB level
- * (see supabase/migrations/0026_jobs_table.sql), so a duplicate
- * insert attempt fails with a unique-violation rather than silently
- * overwriting -- caught per-row below and counted as "skipped" rather
- * than aborting the whole batch. The scraper generates and owns the
- * slug (hdenta_slug in the request body) -- this route stores it
- * exactly as received, never regenerates or modifies it, since the
- * scraper already builds Telegram links pointing at
- * hdenta.com/jobs/<that exact slug> before ever sending the request.
- *
- * Test locally with:
- *   curl -X POST http://localhost:3000/api/jobs/ingest \
- *     -H "Authorization: Bearer $HDENTA_INGEST_SECRET" \
- *     -H "Content-Type: application/json" \
- *     -d '{"jobs":[{"source_platform":"Indeed","source_url":"https://indeed.com/viewjob?jk=test1","title":"Dental Hygienist","hdenta_slug":"test-hygienist-1"}]}'
- */
-
-interface IncomingJob {
-  source_platform?: string;
-  source_url: string;
+export interface IngestJob {
+  // Required
+  slug: string;           // deterministic unique ID — see WELLS_INTEGRATION.md
   title: string;
-  practice_name?: string;
-  location?: { city?: string; state?: string; zip?: string };
-  job_type?: string;
-  pay?: { min?: number; max?: number; unit?: string };
-  description?: string;
-  requirements?: string[];
-  benefits?: string[];
-  posted_date?: string;
-  scraped_at?: string;
-  hdenta_slug: string;
+  practice_name: string;  // was "company" in old spec — now matches DB column
+  city: string;
+  state: string;          // 2-letter: "TX", "CA", "AR"
+  source_url: string;     // was "apply_url" — direct application URL
+  source_platform: string; // was "source" — "glassdoor" | "simplyhired" | "linkedin" | "indeed" | "ziprecruiter"
+
+  // Strongly recommended
+  description?: string | null;        // raw description (may include HTML)
+  description_clean?: string | null;  // plain text, HTML stripped, \n\n paragraphs
+  job_type?: "full-time" | "part-time" | "temp" | "per-diem" | null;
+  pay_min?: number | null;
+  pay_max?: number | null;
+  pay_unit?: "hourly" | "annual" | "monthly" | null;  // was "pay_period"
+  posted_date?: string | null;   // "YYYY-MM-DD" date string (matches DB column type)
+  expires_at?: string | null;    // ISO 8601
+
+  // Optional enrichment
+  source_type?: "internal" | "external";
+  role_category?: string | null;
+  requirements?: Record<string, unknown> | string[] | null;  // jsonb
+  benefits?: Record<string, unknown> | string[] | null;      // jsonb
+  zip?: string | null;
+  status?: string;  // defaults to "active"
 }
 
-export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const expected = process.env.HDENTA_INGEST_SECRET ? `Bearer ${process.env.HDENTA_INGEST_SECRET}` : null;
+function isAuthorized(req: NextRequest): boolean {
+  const secret = process.env.JOBS_INGEST_SECRET;
+  if (!secret) return false;
+  return req.headers.get("authorization") === `Bearer ${secret}`;
+}
 
-  if (!expected || authHeader !== expected) {
+function validate(job: IngestJob): string | null {
+  if (!job.slug?.trim()) return "missing: slug";
+  if (!job.title?.trim()) return "missing: title";
+  if (!job.practice_name?.trim()) return "missing: practice_name";
+  if (!job.city?.trim()) return "missing: city";
+  if (!job.state?.trim()) return "missing: state";
+  if (!job.source_url?.trim()) return "missing: source_url";
+  if (!job.source_platform?.trim()) return "missing: source_platform";
+  return null;
+}
+
+function normalize(job: IngestJob) {
+  return {
+    slug:             job.slug.trim().toLowerCase(),
+    title:            job.title.trim(),
+    practice_name:    job.practice_name.trim(),
+    city:             job.city.trim(),
+    state:            job.state.trim().toUpperCase(),
+    zip:              job.zip?.trim() ?? null,
+    source_url:       job.source_url.trim(),
+    source_platform:  job.source_platform.trim().toLowerCase(),
+    source_type:      job.source_type ?? "external",
+    description:      job.description?.trim() ?? null,
+    description_clean: job.description_clean?.trim() ?? null,
+    job_type:         job.job_type ?? null,
+    pay_min:          job.pay_min ?? null,
+    pay_max:          job.pay_max ?? null,
+    pay_unit:         job.pay_unit ?? null,
+    posted_date:      job.posted_date ?? null,  // "YYYY-MM-DD"
+    expires_at:       job.expires_at ?? null,
+    role_category:    job.role_category ?? null,
+    requirements:     job.requirements ?? null,
+    benefits:         job.benefits ?? null,
+    status:           job.status ?? "active",
+    updated_at:       new Date().toISOString(),
+  };
+}
+
+export async function POST(req: NextRequest) {
+  if (!isAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { jobs?: IncomingJob[] };
+  let body: IngestJob | IngestJob[];
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const jobs = body.jobs ?? [];
-  const errors: string[] = [];
-  let inserted = 0;
-  let skipped = 0;
+  const jobs = Array.isArray(body) ? body : [body];
+  if (jobs.length === 0)
+    return NextResponse.json({ error: "Empty payload" }, { status: 400 });
+  if (jobs.length > 500)
+    return NextResponse.json({ error: "Max 500 per request" }, { status: 400 });
 
-  const supabase = createServiceClient();
+  const errors: { index: number; slug?: string; error: string }[] = [];
+  for (let i = 0; i < jobs.length; i++) {
+    const err = validate(jobs[i]);
+    if (err) errors.push({ index: i, slug: jobs[i]?.slug, error: err });
+  }
+  if (errors.length > 0) {
+    return NextResponse.json({ error: "Validation failed", details: errors }, { status: 422 });
+  }
 
-  for (const job of jobs) {
-    if (!job.source_url || !job.title || !job.hdenta_slug) {
-      errors.push(`Skipped a job missing source_url/title/hdenta_slug: ${JSON.stringify(job).slice(0, 120)}`);
-      continue;
-    }
+  const rows = jobs.map(normalize);
+  const supabase = await createClient();
 
-    const { error } = await supabase.from("jobs").insert({
-      slug: job.hdenta_slug,
-      title: job.title,
-      practice_name: job.practice_name ?? null,
-      city: job.location?.city ?? null,
-      state: job.location?.state ?? null,
-      zip: job.location?.zip ?? null,
-      job_type: job.job_type ?? null,
-      pay_min: job.pay?.min ?? null,
-      pay_max: job.pay?.max ?? null,
-      pay_unit: job.pay?.unit ?? null,
-      description: job.description ?? null,
-      requirements: job.requirements ?? [],
-      benefits: job.benefits ?? [],
-      source_platform: job.source_platform ?? null,
-      source_url: job.source_url,
-      posted_date: job.posted_date ?? null,
-      scraped_at: job.scraped_at ?? new Date().toISOString(),
-      status: "active",
-    });
+  // upsert on slug — safe to re-run backfill any number of times
+  const { data, error } = await supabase
+    .from("jobs")
+    .upsert(rows, { onConflict: "slug" })
+    .select("slug");
 
-    if (error) {
-      // Postgres unique-violation code -- source_url (or slug)
-      // already exists, which is the expected, normal "already have
-      // this one" case, not a real error. Anything else genuinely is.
-      if (error.code === "23505") {
-        skipped++;
-      } else {
-        errors.push(`${job.source_url}: ${error.message}`);
-      }
-    } else {
-      inserted++;
-    }
+  if (error) {
+    console.error("[jobs/ingest] upsert error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   return NextResponse.json({
-    received: jobs.length,
-    inserted,
-    skipped,
-    errors,
+    ok: true,
+    upserted: data?.length ?? rows.length,
+    slugs: data?.map((r) => r.slug) ?? [],
   });
 }
