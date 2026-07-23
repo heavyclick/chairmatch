@@ -43,7 +43,7 @@ export interface IngestJob {
 }
 
 function isAuthorized(req: NextRequest): boolean {
-  const secret = process.env.JOBS_INGEST_SECRET;
+  const secret = process.env.HDENTA_INGEST_SECRET;
   if (!secret) return false;
   return req.headers.get("authorization") === `Bearer ${secret}`;
 }
