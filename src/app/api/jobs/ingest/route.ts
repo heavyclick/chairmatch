@@ -10,7 +10,7 @@
 //   benefits — jsonb (send as object or array, stored as jsonb)
 //   requirements — jsonb (existing field, now included)
 
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export interface IngestJob {
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
   }
 
   const rows = jobs.map(normalize);
-  const supabase = await createClient();
+  const supabase = await createServiceClient();
 
   // upsert on slug — safe to re-run backfill any number of times
   const { data, error } = await supabase
