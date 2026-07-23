@@ -93,7 +93,7 @@ export function BrowseJobsClient({ initialJobs, internalCount, currentParams, pr
         onClose={() => setInterstitialJob(null)}
       />
 
-      <div className="px-8 py-8 max-w-6xl">
+      <div className="px-8 py-8 w-full">
         {/* Page header */}
         <div className="mb-7">
           <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-widest mb-1">
