@@ -8,18 +8,23 @@ import { Search } from "lucide-react";
 import { JobCard, type Job } from "@/components/candidate/job-card";
 import { ApplyInterstitial } from "@/components/candidate/apply-interstitial";
 
+// ── Default tab ───────────────────────────────────────────────────────────────
+// Flip to "internal" when native listings are the primary experience.
+// One line change — no logic scattered elsewhere.
+const DEFAULT_SOURCE_TAB: "all" | "internal" | "external" = "all";
+
 // Must match roles.slug values from 0001_initial_schema.sql exactly
 const ROLE_OPTIONS = [
-  { value: "hygienist",               label: "Dental Hygienist" },
-  { value: "dental_assistant",        label: "Dental Assistant" },
-  { value: "front_desk",              label: "Front Desk" },
-  { value: "office_manager",          label: "Office Manager" },
-  { value: "treatment_coordinator",   label: "Treatment Coordinator" },
-  { value: "billing_coordinator",     label: "Billing Coordinator" },
-  { value: "sterilization_tech",      label: "Sterilization Tech" },
-  { value: "lab_tech",                label: "Lab Tech" },
-  { value: "associate_dentist",       label: "Associate Dentist" },
-  { value: "dentist_owner",           label: "Dentist / Practice Owner" },
+  { value: "hygienist",             label: "Dental Hygienist" },
+  { value: "dental_assistant",      label: "Dental Assistant" },
+  { value: "front_desk",            label: "Front Desk" },
+  { value: "office_manager",        label: "Office Manager" },
+  { value: "treatment_coordinator", label: "Treatment Coordinator" },
+  { value: "billing_coordinator",   label: "Billing Coordinator" },
+  { value: "sterilization_tech",    label: "Sterilization Tech" },
+  { value: "lab_tech",              label: "Lab Tech" },
+  { value: "associate_dentist",     label: "Associate Dentist" },
+  { value: "dentist_owner",         label: "Dentist / Practice Owner" },
 ];
 
 const US_STATES = [
@@ -28,6 +33,13 @@ const US_STATES = [
   "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
   "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
   "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY",
+];
+
+// Three named tabs — matches the pill UI exactly.
+const SOURCE_TABS: { value: "all" | "internal" | "external"; label: string }[] = [
+  { value: "all",      label: "All jobs" },
+  { value: "internal", label: "✦ On Hdenta" },
+  { value: "external", label: "Aggregated" },
 ];
 
 interface Props {
@@ -42,9 +54,16 @@ interface Props {
     source_type?: string;
   };
   profileSummary: string | null;
+  candidateId: string | null;
 }
 
-export function BrowseJobsClient({ initialJobs, internalCount, currentParams, profileSummary }: Props) {
+export function BrowseJobsClient({
+  initialJobs,
+  internalCount,
+  currentParams,
+  profileSummary,
+  candidateId,
+}: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -53,28 +72,40 @@ export function BrowseJobsClient({ initialJobs, internalCount, currentParams, pr
   const [jobType, setJobType] = useState(currentParams.job_type ?? "");
   const [payMin, setPayMin]   = useState(currentParams.pay_min ?? "");
   const [role, setRole]       = useState(currentParams.role ?? "");
-  const activeSourceTab       = currentParams.source_type ?? "all";
+
+  // Active tab — defaults to the URL param, then falls back to
+  // DEFAULT_SOURCE_TAB. When DEFAULT_SOURCE_TAB flips to "internal",
+  // the first page load with no ?source_type param will show native jobs.
+  const activeSourceTab =
+    (currentParams.source_type as "all" | "internal" | "external" | undefined) ??
+    DEFAULT_SOURCE_TAB;
 
   const [interstitialJob, setInterstitialJob] = useState<Job | null>(null);
 
-  const buildParams = useCallback((overrides: Record<string, string> = {}) => {
-    const p = new URLSearchParams();
-    const vals: Record<string, string> = {
-      state, city, job_type: jobType, pay_min: payMin, role,
-      source_type: currentParams.source_type ?? "",
-      ...overrides,
-    };
-    Object.entries(vals).forEach(([k, v]) => { if (v) p.set(k, v); });
-    return p.toString();
-  }, [state, city, jobType, payMin, role, currentParams.source_type]);
+  const buildParams = useCallback(
+    (overrides: Record<string, string> = {}) => {
+      const p = new URLSearchParams();
+      const vals: Record<string, string> = {
+        state, city, job_type: jobType, pay_min: payMin, role,
+        source_type: currentParams.source_type ?? "",
+        ...overrides,
+      };
+      Object.entries(vals).forEach(([k, v]) => { if (v) p.set(k, v); });
+      return p.toString();
+    },
+    [state, city, jobType, payMin, role, currentParams.source_type]
+  );
 
   const applyFilters = () => {
     startTransition(() => router.push(`/candidate/browse?${buildParams()}`));
   };
 
-  const setSourceTab = (val: string) => {
+  const setSourceTab = (val: "all" | "internal" | "external") => {
+    // When switching to the default tab, drop the param from the URL
+    // entirely so it stays clean (/candidate/browse, not ?source_type=all).
+    const paramVal = val === DEFAULT_SOURCE_TAB ? "" : val;
     startTransition(() =>
-      router.push(`/candidate/browse?${buildParams({ source_type: val === "all" ? "" : val })}`)
+      router.push(`/candidate/browse?${buildParams({ source_type: paramVal })}`)
     );
   };
 
@@ -85,11 +116,25 @@ export function BrowseJobsClient({ initialJobs, internalCount, currentParams, pr
 
   const hasFilters = state || city || jobType || payMin || role || currentParams.source_type;
 
+  // Handle apply click — routes native vs external jobs to different flows.
+  const handleApply = (job: Job) => {
+    if (job.source_type === "internal") {
+      // Native listing — show the in-platform apply interstitial (which
+      // handles the full apply flow including cover note + submission).
+      setInterstitialJob(job);
+    } else {
+      // External listing — show the "copy your summary and go to the
+      // job board" interstitial, same as before.
+      setInterstitialJob(job);
+    }
+  };
+
   return (
     <>
       <ApplyInterstitial
         job={interstitialJob}
         profileSummary={profileSummary}
+        candidateId={candidateId}
         onClose={() => setInterstitialJob(null)}
       />
 
@@ -102,7 +147,7 @@ export function BrowseJobsClient({ initialJobs, internalCount, currentParams, pr
           <h1 className="font-serif font-bold text-[26px] text-ink">Browse dental jobs</h1>
         </div>
 
-        {/* Live-count hero — mirrors owner/browse stat card */}
+        {/* Live-count hero */}
         <div className="bg-ink rounded-xl p-6 mb-5 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -133,13 +178,9 @@ export function BrowseJobsClient({ initialJobs, internalCount, currentParams, pr
           )}
         </div>
 
-        {/* Source type quick-tabs */}
+        {/* Source type tabs — All / On Hdenta / Aggregated */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
-          {[
-            { value: "all",      label: "All jobs" },
-            { value: "internal", label: "✦ On Hdenta" },
-            { value: "external", label: "Aggregated" },
-          ].map((tab) => (
+          {SOURCE_TABS.map((tab) => (
             <button
               key={tab.value}
               onClick={() => setSourceTab(tab.value)}
@@ -229,7 +270,7 @@ export function BrowseJobsClient({ initialJobs, internalCount, currentParams, pr
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {initialJobs.map((job) => (
-              <JobCard key={job.id} job={job} onApply={setInterstitialJob} />
+              <JobCard key={job.id} job={job} onApply={handleApply} />
             ))}
           </div>
         )}

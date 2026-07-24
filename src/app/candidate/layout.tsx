@@ -57,7 +57,7 @@ export default function CandidateLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      {/* DESKTOP TOPBAR -- mirrors the owner shell's icon row */}
+      {/* DESKTOP TOPBAR */}
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="hidden md:flex items-center justify-end gap-2.5 px-8 py-4 sticky top-0 z-20 bg-bg/80 backdrop-blur-sm">
           <Link
@@ -74,17 +74,18 @@ export default function CandidateLayout({ children }: { children: React.ReactNod
         <main className="flex-1 min-w-0 pt-[60px] pb-24 md:pt-0 md:pb-0">{children}</main>
       </div>
 
-      {/* MOBILE BOTTOM NAV -- previously only Home/Messages/Settings,
-          missing Browse practices and Profile entirely, matching the
-          owner shell's 5-item pattern now (Support lives inside
-          Settings, same as before, just now with a visible link there
-          -- see src/app/candidate/settings/page.tsx). */}
+      {/* MOBILE BOTTOM NAV
+          Fixed: "Jobs" previously pointed to /jobs (the public marketing
+          page) — now points to /candidate/browse (the authenticated
+          internal browse experience). A logged-in candidate hitting /jobs
+          still works but doesn't have the tab switching, native listings,
+          or the apply flow — so the right destination is /candidate/browse. */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-bg-raised border-t border-line px-2 pt-2 pb-[max(10px,env(safe-area-inset-bottom))] flex justify-around">
-        <MobileNavItem icon="Home" label="Home" href="/candidate/dashboard" />
-        <MobileNavItem icon="Search" label="Jobs" href="/jobs" />
+        <MobileNavItem icon="Home"          label="Home"     href="/candidate/dashboard" />
+        <MobileNavItem icon="Search"        label="Jobs"     href="/candidate/browse" />
         <MobileNavItem icon="MessageSquare" label="Messages" href="/candidate/messages" />
-        <MobileNavItem icon="User" label="Profile" href="/candidate/profile" />
-        <MobileNavItem icon="Settings" label="More" href="/candidate/settings" />
+        <MobileNavItem icon="User"          label="Profile"  href="/candidate/profile" />
+        <MobileNavItem icon="Settings"      label="More"     href="/candidate/settings" />
       </nav>
     </div>
   );
