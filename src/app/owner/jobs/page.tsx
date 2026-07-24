@@ -26,6 +26,24 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// Normalized shape used throughout this page — role and applications
+// come back as arrays from Supabase (PostgREST join behaviour) and are
+// flattened to plain objects right after the query.
+interface NormalizedPosting {
+  id: string;
+  slug: string;
+  title: string;
+  employment_type: string | null;
+  city: string | null;
+  state: string | null;
+  status: string;
+  expires_at: string | null;
+  created_at: string;
+  role: { label: string } | null;
+  applicant_count: number;
+  pending_count: number;
+}
+
 export default async function OwnerJobsPage() {
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
@@ -37,7 +55,7 @@ export default async function OwnerJobsPage() {
     .eq("id", authData.user.id)
     .maybeSingle();
 
-  const { data: postings } = await supabase
+  const { data: rawPostings } = await supabase
     .from("job_postings")
     .select(
       `id, slug, title, employment_type, city, state, status, expires_at, created_at,
@@ -49,18 +67,35 @@ export default async function OwnerJobsPage() {
 
   const hasSubscription = practice?.job_posting_subscription_active ?? false;
 
-  const active  = (postings ?? []).filter((p) => p.status === "active");
-  const drafts  = (postings ?? []).filter((p) => p.status === "draft");
-  const paused  = (postings ?? []).filter((p) => p.status === "paused");
-  const expired = (postings ?? []).filter((p) => p.status === "expired").slice(0, 10);
+  // Supabase returns FK joins as arrays even for to-one relationships.
+  // Normalize here so the rest of the component works with plain objects.
+  const postings: NormalizedPosting[] = (rawPostings ?? []).map((p) => {
+    const roleArr = p.role as { label: string }[] | { label: string } | null;
+    const role = Array.isArray(roleArr) ? (roleArr[0] ?? null) : (roleArr ?? null);
 
-  function applicantCounts(p: typeof postings extends (infer T)[] | null ? T : never) {
-    const apps = Array.isArray(p.applications) ? p.applications : [];
+    const appsArr = p.applications as { id: string; status: string }[] | null;
+    const apps = Array.isArray(appsArr) ? appsArr : [];
+
     return {
-      total: apps.length,
-      pending: apps.filter((a: { status: string }) => a.status === "pending").length,
+      id: p.id,
+      slug: p.slug,
+      title: p.title,
+      employment_type: p.employment_type ?? null,
+      city: p.city ?? null,
+      state: p.state ?? null,
+      status: p.status,
+      expires_at: p.expires_at ?? null,
+      created_at: p.created_at,
+      role,
+      applicant_count: apps.length,
+      pending_count: apps.filter((a) => a.status === "pending").length,
     };
-  }
+  });
+
+  const active  = postings.filter((p) => p.status === "active");
+  const drafts  = postings.filter((p) => p.status === "draft");
+  const paused  = postings.filter((p) => p.status === "paused");
+  const expired = postings.filter((p) => p.status === "expired").slice(0, 10);
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px" }}>
@@ -70,14 +105,14 @@ export default async function OwnerJobsPage() {
           <p style={{ fontSize: 12, color: "var(--ink-faint)", marginBottom: 4 }}>Manage your listings</p>
           <h1 style={{ fontFamily: "var(--font-serif)", fontSize: 26, fontWeight: 700, margin: 0 }}>Job Postings</h1>
         </div>
-        {hasSubscription ? (
+        {hasSubscription && (
           <Link
             href="/owner/jobs/new"
             style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "var(--teal)", color: "#fff", fontSize: 13.5, fontWeight: 600, padding: "10px 18px", borderRadius: "var(--radius-control)", textDecoration: "none" }}
           >
             <Plus size={15} /> Post a Job
           </Link>
-        ) : null}
+        )}
       </div>
 
       {/* Paywall — no subscription */}
@@ -100,9 +135,8 @@ export default async function OwnerJobsPage() {
               </div>
             ))}
           </div>
-          {/* Link to billing — the checkout URL for the job postings LS product */}
           <Link
-            href="/owner/settings/billing?product=job_postings"
+            href={`https://hdenta.gumroad.com/l/hdenta-job-postings?supabase_user_id=${authData.user.id}`}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--teal)", color: "#fff", fontSize: 14, fontWeight: 700, padding: "12px 28px", borderRadius: "var(--radius-control)", textDecoration: "none" }}
           >
             Subscribe — $50/month
@@ -111,9 +145,9 @@ export default async function OwnerJobsPage() {
       )}
 
       {/* Empty state — subscribed but no postings yet */}
-      {hasSubscription && (postings ?? []).length === 0 && (
+      {hasSubscription && postings.length === 0 && (
         <div style={{ border: "1.5px dashed var(--line)", borderRadius: 16, padding: "40px 28px", textAlign: "center" }}>
-          <Briefcase size={24} color="var(--ink-faint)" style={{ margin: "0 auto 12px" }} />
+          <Briefcase size={24} color="var(--ink-faint)" style={{ margin: "0 auto 12px", display: "block" }} />
           <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>No job postings yet</p>
           <p style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 20 }}>Post your first opening and start receiving applications from dental candidates.</p>
           <Link
@@ -125,45 +159,39 @@ export default async function OwnerJobsPage() {
         </div>
       )}
 
-      {/* Active listings */}
+      {/* Active */}
       {active.length > 0 && (
         <Section title="Active" icon={<CheckCircle size={15} color="var(--teal)" />}>
-          {active.map((p) => {
-            const { total, pending } = applicantCounts(p);
-            return (
-              <PostingRow key={p.id} posting={p} total={total} pending={pending} daysLeft={daysLeft(p.expires_at)} />
-            );
-          })}
+          {active.map((p) => (
+            <PostingRow key={p.id} posting={p} daysLeft={daysLeft(p.expires_at)} />
+          ))}
         </Section>
       )}
 
       {/* Drafts */}
       {drafts.length > 0 && (
         <Section title="Drafts">
-          {drafts.map((p) => {
-            const { total, pending } = applicantCounts(p);
-            return <PostingRow key={p.id} posting={p} total={total} pending={pending} daysLeft={null} />;
-          })}
+          {drafts.map((p) => (
+            <PostingRow key={p.id} posting={p} daysLeft={null} />
+          ))}
         </Section>
       )}
 
       {/* Paused */}
       {paused.length > 0 && (
         <Section title="Paused" icon={<PauseCircle size={15} color="var(--ink-soft)" />}>
-          {paused.map((p) => {
-            const { total, pending } = applicantCounts(p);
-            return <PostingRow key={p.id} posting={p} total={total} pending={pending} daysLeft={null} />;
-          })}
+          {paused.map((p) => (
+            <PostingRow key={p.id} posting={p} daysLeft={null} />
+          ))}
         </Section>
       )}
 
       {/* Expired (last 10) */}
       {expired.length > 0 && (
         <Section title="Recently expired">
-          {expired.map((p) => {
-            const { total } = applicantCounts(p);
-            return <PostingRow key={p.id} posting={p} total={total} pending={0} daysLeft={null} />;
-          })}
+          {expired.map((p) => (
+            <PostingRow key={p.id} posting={p} daysLeft={null} />
+          ))}
         </Section>
       )}
     </div>
@@ -188,13 +216,9 @@ function Section({ title, icon, children }: { title: string; icon?: React.ReactN
 
 function PostingRow({
   posting,
-  total,
-  pending,
   daysLeft: dl,
 }: {
-  posting: { id: string; title: string; status: string; city: string | null; state: string | null; employment_type: string | null; role: { label: string } | null };
-  total: number;
-  pending: number;
+  posting: NormalizedPosting;
   daysLeft: string | null;
 }) {
   return (
@@ -210,24 +234,28 @@ function PostingRow({
           <StatusBadge status={posting.status} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12.5, color: "var(--ink-soft)", flexWrap: "wrap" }}>
-          {posting.role && <span>{(posting.role as { label: string }).label}</span>}
+          {posting.role && <span>{posting.role.label}</span>}
           {(posting.city || posting.state) && (
             <span>{[posting.city, posting.state].filter(Boolean).join(", ")}</span>
           )}
           {posting.employment_type && (
             <span style={{ textTransform: "capitalize" }}>{posting.employment_type.replace("_", "-")}</span>
           )}
-          {dl && <span style={{ color: "var(--ink-faint)", display: "flex", alignItems: "center", gap: 4 }}><Clock size={11} /> {dl}</span>}
+          {dl && (
+            <span style={{ color: "var(--ink-faint)", display: "flex", alignItems: "center", gap: 4 }}>
+              <Clock size={11} /> {dl}
+            </span>
+          )}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, shrink: 0 }}>
-        {total > 0 && (
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+        {posting.applicant_count > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "var(--ink-soft)" }}>
             <Users size={13} />
-            <span style={{ fontWeight: 600 }}>{total}</span>
-            {pending > 0 && (
+            <span style={{ fontWeight: 600 }}>{posting.applicant_count}</span>
+            {posting.pending_count > 0 && (
               <span style={{ background: "var(--coral)", color: "#fff", fontSize: 10.5, fontWeight: 700, borderRadius: 999, padding: "1px 7px" }}>
-                {pending} new
+                {posting.pending_count} new
               </span>
             )}
           </div>
