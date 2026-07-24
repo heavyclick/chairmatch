@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Star, Mail, Sparkles, Clock, Settings, DollarSign, Lock, Users, LifeBuoy } from "lucide-react";
+import { Home, Search, Star, Mail, Sparkles, Clock, Settings, DollarSign, Lock, Users, LifeBuoy, Briefcase } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const ICONS = { Home, Search, Star, Mail, Sparkles, Clock, Settings, DollarSign, Users, LifeBuoy };
+const ICONS = { Home, Search, Star, Mail, Sparkles, Clock, Settings, DollarSign, Users, LifeBuoy, Briefcase };
 
 interface NavItemProps {
   icon: keyof typeof ICONS;
@@ -69,4 +69,3 @@ export function NavItem({ icon, label, href, locked, collapsed, badgeCount, tag 
     </Link>
   );
 }
-
