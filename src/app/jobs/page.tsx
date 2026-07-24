@@ -1,267 +1,193 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { MapPin, Clock, DollarSign } from "lucide-react";
+import { SiteHeader } from "@/components/marketing/site-header";
+import { SiteFooter } from "@/components/marketing/site-footer";
 import { createClient } from "@/lib/supabase/server";
-import { Briefcase, Plus, Users, Clock, PauseCircle, CheckCircle } from "lucide-react";
+import { US_STATES } from "@/lib/constants";
 
-function daysLeft(expiresAt: string | null): string | null {
-  if (!expiresAt) return null;
-  const days = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000);
-  if (days <= 0) return "Expires today";
-  if (days === 1) return "1 day left";
-  return `${days} days left`;
+export const metadata = {
+  title: "Browse Dental Jobs — Hdenta",
+  description: "Dental hygienist, assistant, front desk, and office manager jobs, pulled in from across the web.",
+};
+
+const JOB_TYPES = ["Full-time", "Part-time", "Temp / Relief", "Contract"];
+const PAGE_SIZE = 20;
+
+function daysAgo(dateStr: string | null): string {
+  if (!dateStr) return "";
+  const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+  if (days <= 0) return "Posted today";
+  if (days === 1) return "Posted 1 day ago";
+  return `Posted ${days} days ago`;
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; style: string }> = {
-    active:  { label: "Active",  style: "bg-teal/10 text-teal border border-teal/20" },
-    draft:   { label: "Draft",   style: "bg-line text-ink-soft border border-line" },
-    paused:  { label: "Paused",  style: "bg-amber-50 text-amber-700 border border-amber-200" },
-    expired: { label: "Expired", style: "bg-line text-ink-faint border border-line" },
-  };
-  const { label, style } = map[status] ?? { label: status, style: "bg-line text-ink-faint" };
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, letterSpacing: "0.06em" }} className={style}>
-      {label}
-    </span>
-  );
-}
-
-// Normalized shape used throughout this page — role and applications
-// come back as arrays from Supabase (PostgREST join behaviour) and are
-// flattened to plain objects right after the query.
-interface NormalizedPosting {
-  id: string;
-  slug: string;
-  title: string;
-  employment_type: string | null;
-  city: string | null;
-  state: string | null;
-  status: string;
-  expires_at: string | null;
-  created_at: string;
-  role: { label: string } | null;
-  applicant_count: number;
-  pending_count: number;
-}
-
-export default async function OwnerJobsPage() {
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData.user) redirect("/login");
-
-  const { data: practice } = await supabase
-    .from("practice_profiles")
-    .select("practice_name, job_posting_subscription_active")
-    .eq("id", authData.user.id)
-    .maybeSingle();
-
-  const { data: rawPostings } = await supabase
-    .from("job_postings")
-    .select(
-      `id, slug, title, employment_type, city, state, status, expires_at, created_at,
-       role:roles(label),
-       applications:job_applications(id, status)`
-    )
-    .eq("owner_id", authData.user.id)
-    .order("created_at", { ascending: false });
-
-  const hasSubscription = practice?.job_posting_subscription_active ?? false;
-
-  // Supabase returns FK joins as arrays even for to-one relationships.
-  // Normalize here so the rest of the component works with plain objects.
-  const postings: NormalizedPosting[] = (rawPostings ?? []).map((p) => {
-    const roleArr = p.role as { label: string }[] | { label: string } | null;
-    const role = Array.isArray(roleArr) ? (roleArr[0] ?? null) : (roleArr ?? null);
-
-    const appsArr = p.applications as { id: string; status: string }[] | null;
-    const apps = Array.isArray(appsArr) ? appsArr : [];
-
-    return {
-      id: p.id,
-      slug: p.slug,
-      title: p.title,
-      employment_type: p.employment_type ?? null,
-      city: p.city ?? null,
-      state: p.state ?? null,
-      status: p.status,
-      expires_at: p.expires_at ?? null,
-      created_at: p.created_at,
-      role,
-      applicant_count: apps.length,
-      pending_count: apps.filter((a) => a.status === "pending").length,
-    };
-  });
-
-  const active  = postings.filter((p) => p.status === "active");
-  const drafts  = postings.filter((p) => p.status === "draft");
-  const paused  = postings.filter((p) => p.status === "paused");
-  const expired = postings.filter((p) => p.status === "expired").slice(0, 10);
-
-  return (
-    <div style={{ maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <p style={{ fontSize: 12, color: "var(--ink-faint)", marginBottom: 4 }}>Manage your listings</p>
-          <h1 style={{ fontFamily: "var(--font-serif)", fontSize: 26, fontWeight: 700, margin: 0 }}>Job Postings</h1>
-        </div>
-        {hasSubscription && (
-          <Link
-            href="/owner/jobs/new"
-            style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "var(--teal)", color: "#fff", fontSize: 13.5, fontWeight: 600, padding: "10px 18px", borderRadius: "var(--radius-control)", textDecoration: "none" }}
-          >
-            <Plus size={15} /> Post a Job
-          </Link>
-        )}
-      </div>
-
-      {/* Paywall — no subscription */}
-      {!hasSubscription && (
-        <div style={{ border: "1.5px dashed var(--line)", borderRadius: 16, padding: "36px 28px", textAlign: "center", marginBottom: 32 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: "var(--teal-tint)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-            <Briefcase size={22} color="var(--teal-deep)" />
-          </div>
-          <h2 style={{ fontFamily: "var(--font-serif)", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-            Post jobs directly on Hdenta
-          </h2>
-          <p style={{ fontSize: 14, color: "var(--ink-soft)", maxWidth: 440, margin: "0 auto 24px", lineHeight: 1.6 }}>
-            Reach actively-looking dental candidates in your area. Unlimited postings for $50/month — cancel any time.
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center", marginBottom: 20 }}>
-            {["Unlimited job postings", "AI-assisted job post drafting", "In-platform candidate applications", "Applicant inbox with messaging"].map((f) => (
-              <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
-                <CheckCircle size={14} color="var(--teal)" />
-                <span>{f}</span>
-              </div>
-            ))}
-          </div>
-          <Link
-            href="/owner/settings/billing?product=job_postings"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--teal)", color: "#fff", fontSize: 14, fontWeight: 700, padding: "12px 28px", borderRadius: "var(--radius-control)", textDecoration: "none" }}
-          >
-            Subscribe — $50/month
-          </Link>
-        </div>
-      )}
-
-      {/* Empty state — subscribed but no postings yet */}
-      {hasSubscription && postings.length === 0 && (
-        <div style={{ border: "1.5px dashed var(--line)", borderRadius: 16, padding: "40px 28px", textAlign: "center" }}>
-          <Briefcase size={24} color="var(--ink-faint)" style={{ margin: "0 auto 12px", display: "block" }} />
-          <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>No job postings yet</p>
-          <p style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 20 }}>Post your first opening and start receiving applications from dental candidates.</p>
-          <Link
-            href="/owner/jobs/new"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--teal)", color: "#fff", fontSize: 13.5, fontWeight: 600, padding: "10px 20px", borderRadius: "var(--radius-control)", textDecoration: "none" }}
-          >
-            <Plus size={14} /> Post your first job
-          </Link>
-        </div>
-      )}
-
-      {/* Active */}
-      {active.length > 0 && (
-        <Section title="Active" icon={<CheckCircle size={15} color="var(--teal)" />}>
-          {active.map((p) => (
-            <PostingRow key={p.id} posting={p} daysLeft={daysLeft(p.expires_at)} />
-          ))}
-        </Section>
-      )}
-
-      {/* Drafts */}
-      {drafts.length > 0 && (
-        <Section title="Drafts">
-          {drafts.map((p) => (
-            <PostingRow key={p.id} posting={p} daysLeft={null} />
-          ))}
-        </Section>
-      )}
-
-      {/* Paused */}
-      {paused.length > 0 && (
-        <Section title="Paused" icon={<PauseCircle size={15} color="var(--ink-soft)" />}>
-          {paused.map((p) => (
-            <PostingRow key={p.id} posting={p} daysLeft={null} />
-          ))}
-        </Section>
-      )}
-
-      {/* Expired (last 10) */}
-      {expired.length > 0 && (
-        <Section title="Recently expired">
-          {expired.map((p) => (
-            <PostingRow key={p.id} posting={p} daysLeft={null} />
-          ))}
-        </Section>
-      )}
-    </div>
-  );
-}
-
-function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 32 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
-        {icon}
-        <h2 style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--ink-faint)", margin: 0 }}>
-          {title}
-        </h2>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function PostingRow({
-  posting,
-  daysLeft: dl,
+export default async function JobsPage({
+  searchParams,
 }: {
-  posting: NormalizedPosting;
-  daysLeft: string | null;
+  searchParams: Promise<{ [key: string]: string | undefined }>;
 }) {
+  const params = await searchParams;
+  const supabase = await createClient();
+
+  // Default to the visitor's own saved state if they're logged in as
+  // a candidate -- per the spec, they shouldn't have to change
+  // anything to see locally relevant results. Anonymous visitors (the
+  // Google-search / SEO case) just see everything by default, since
+  // there's no profile to derive a state from.
+  let defaultState: string | null = null;
+  const { data: authData } = await supabase.auth.getUser();
+  if (authData.user) {
+    const { data: candidate } = await supabase
+      .from("candidate_profiles")
+      .select("state")
+      .eq("id", authData.user.id)
+      .maybeSingle();
+    defaultState = candidate?.state ?? null;
+  }
+
+  const state = params.state ?? defaultState ?? "";
+  const city = params.city ?? "";
+  const position = params.position ?? "";
+  const jobType = params.job_type ?? "";
+  const payMin = params.pay_min ? Number(params.pay_min) : null;
+  const source = params.source ?? "";
+  const page = Math.max(1, Number(params.page) || 1);
+
+  let query = supabase
+    .from("jobs")
+    .select("slug, title, practice_name, city, state, job_type, pay_min, pay_max, pay_unit, source_platform, posted_date", {
+      count: "exact",
+    })
+    .eq("status", "active")
+    .order("scraped_at", { ascending: false })
+    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
+  if (state && state !== "all") query = query.eq("state", state);
+  if (city) query = query.ilike("city", `%${city}%`);
+  if (position) query = query.ilike("title", `%${position}%`);
+  if (jobType) query = query.eq("job_type", jobType);
+  if (payMin) query = query.gte("pay_max", payMin);
+  if (source) query = query.eq("source_platform", source);
+
+  const { data: jobs, count } = await query;
+  const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
+
+  function buildUrl(overrides: Record<string, string | number | undefined>) {
+    const next = new URLSearchParams();
+    const merged = { state, city, position, job_type: jobType, pay_min: params.pay_min, source, page: undefined as string | number | undefined, ...overrides };
+    for (const [key, value] of Object.entries(merged)) {
+      if (value !== undefined && value !== "") next.set(key, String(value));
+    }
+    return `/jobs?${next.toString()}`;
+  }
+
   return (
-    <Link
-      href={`/owner/jobs/${posting.id}`}
-      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 18px", background: "var(--bg-raised)", border: "1px solid var(--line)", borderRadius: 14, textDecoration: "none", color: "inherit" }}
-    >
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3 }}>
-          <span style={{ fontFamily: "var(--font-serif)", fontSize: 15, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {posting.title}
-          </span>
-          <StatusBadge status={posting.status} />
+    <div>
+      <SiteHeader />
+      <main className="px-5 md:px-10 py-12 max-w-5xl mx-auto">
+        <h1 className="font-serif text-3xl font-semibold mb-2">Browse dental jobs</h1>
+        <p className="text-ink-faint text-[14.5px] mb-8">
+          Pulled in from across the web, updated daily.
+        </p>
+
+        {/* Filters -- plain GET form so this works with zero client JS
+            and stays fully server-rendered/crawlable. */}
+        <form className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-8 p-4 rounded-2xl border border-line bg-bg-raised">
+          <input
+            name="position"
+            defaultValue={position}
+            placeholder="Position (e.g. Hygienist)"
+            className="col-span-2 md:col-span-2 px-3 py-2 rounded-control border border-line text-[13.5px]"
+          />
+          <select name="state" defaultValue={state || "all"} className="px-3 py-2 rounded-control border border-line text-[13.5px]">
+            <option value="all">All states</option>
+            {US_STATES.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <input
+            name="city"
+            defaultValue={city}
+            placeholder="City"
+            className="px-3 py-2 rounded-control border border-line text-[13.5px]"
+          />
+          <select name="job_type" defaultValue={jobType} className="px-3 py-2 rounded-control border border-line text-[13.5px]">
+            <option value="">Any job type</option>
+            {JOB_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <input
+            name="pay_min"
+            type="number"
+            defaultValue={params.pay_min ?? ""}
+            placeholder="Min pay"
+            className="px-3 py-2 rounded-control border border-line text-[13.5px]"
+          />
+          <button type="submit" className="col-span-2 md:col-span-6 bg-teal text-white font-semibold text-[13.5px] py-2.5 rounded-control hover:bg-teal-deep transition-colors">
+            Filter
+          </button>
+        </form>
+
+        {(!jobs || jobs.length === 0) && (
+          <p className="text-ink-faint text-[14.5px] py-12 text-center">
+            No jobs match those filters right now -- try widening your search.
+          </p>
+        )}
+
+        <div className="space-y-3">
+          {jobs?.map((job) => (
+            <Link
+              key={job.slug}
+              href={`/jobs/${job.slug}`}
+              className="block rounded-2xl border border-line p-5 hover:border-teal transition-colors"
+            >
+              <div className="flex items-start justify-between gap-4 mb-2">
+                <div>
+                  <h2 className="font-serif text-lg font-semibold">{job.title}</h2>
+                  <p className="text-[13.5px] text-ink-soft">{job.practice_name ?? "Confidential practice"}</p>
+                </div>
+                {job.source_platform && (
+                  <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-ink-faint bg-bg-raised border border-line px-2 py-1 rounded-full">
+                    Via {job.source_platform}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-ink-faint">
+                {(job.city || job.state) && (
+                  <span className="flex items-center gap-1"><MapPin size={12} /> {[job.city, job.state].filter(Boolean).join(", ")}</span>
+                )}
+                {job.job_type && <span>{job.job_type}</span>}
+                {(job.pay_min || job.pay_max) && (
+                  <span className="flex items-center gap-1">
+                    <DollarSign size={12} />
+                    {job.pay_min && job.pay_max ? `$${job.pay_min}-$${job.pay_max}` : `$${job.pay_min ?? job.pay_max}`}
+                    /{job.pay_unit === "hour" ? "hr" : "yr"}
+                  </span>
+                )}
+                <span className="flex items-center gap-1"><Clock size={12} /> {daysAgo(job.posted_date)}</span>
+              </div>
+            </Link>
+          ))}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12.5, color: "var(--ink-soft)", flexWrap: "wrap" }}>
-          {posting.role && <span>{posting.role.label}</span>}
-          {(posting.city || posting.state) && (
-            <span>{[posting.city, posting.state].filter(Boolean).join(", ")}</span>
-          )}
-          {posting.employment_type && (
-            <span style={{ textTransform: "capitalize" }}>{posting.employment_type.replace("_", "-")}</span>
-          )}
-          {dl && (
-            <span style={{ color: "var(--ink-faint)", display: "flex", alignItems: "center", gap: 4 }}>
-              <Clock size={11} /> {dl}
-            </span>
-          )}
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-        {posting.applicant_count > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "var(--ink-soft)" }}>
-            <Users size={13} />
-            <span style={{ fontWeight: 600 }}>{posting.applicant_count}</span>
-            {posting.pending_count > 0 && (
-              <span style={{ background: "var(--coral)", color: "#fff", fontSize: 10.5, fontWeight: 700, borderRadius: 999, padding: "1px 7px" }}>
-                {posting.pending_count} new
-              </span>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-8">
+            {page > 1 && (
+              <Link href={buildUrl({ page: page - 1 })} className="text-[13px] font-semibold text-teal-deep">
+                Previous
+              </Link>
+            )}
+            <span className="text-[13px] text-ink-faint">Page {page} of {totalPages}</span>
+            {page < totalPages && (
+              <Link href={buildUrl({ page: page + 1 })} className="text-[13px] font-semibold text-teal-deep">
+                Next
+              </Link>
             )}
           </div>
         )}
-        <span style={{ fontSize: 18, color: "var(--ink-faint)" }}>›</span>
-      </div>
-    </Link>
+      </main>
+      <SiteFooter />
+    </div>
   );
 }
