@@ -235,7 +235,7 @@ function PostingRow({
           {dl && <span style={{ color: "var(--ink-faint)", display: "flex", alignItems: "center", gap: 4 }}><Clock size={11} /> {dl}</span>}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, shrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
         {total > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "var(--ink-soft)" }}>
             <Users size={13} />
