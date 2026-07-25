@@ -1,26 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-/**
- * GET /api/owner/job-postings
- * List the current owner's job postings, newest first, with applicant
- * counts per posting. Used by /owner/jobs list page.
- *
- * POST /api/owner/job-postings
- * Create a new job posting. Requires job_posting_subscription_active.
- * Accepts { status: "draft" | "active", ...fields } -- a draft is
- * saved without activating (no expires_at set); active immediately
- * starts the 30-day clock and surfaces to candidates.
- */
-
-function generateSlug(title: string, practiceName: string): string {
-  const base = `${title} ${practiceName}`
+function generateSlug(title: string, suffix: string): string {
+  const base = `${title} ${suffix}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 60);
-  const suffix = Math.random().toString(36).slice(2, 7);
-  return `${base}-${suffix}`;
+  const rand = Math.random().toString(36).slice(2, 7);
+  return `${base}-${rand}`;
 }
 
 export async function GET() {
@@ -45,15 +33,13 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Flatten application counts per status so the list page can show
-  // "3 applicants (1 new)" without another round-trip.
   const enriched = (postings ?? []).map((p) => {
     const apps = Array.isArray(p.applications) ? p.applications : [];
     return {
       ...p,
       applicant_count: apps.length,
       pending_count: apps.filter((a: { status: string }) => a.status === "pending").length,
-      applications: undefined, // don't send raw array to client
+      applications: undefined,
     };
   });
 
@@ -65,24 +51,6 @@ export async function POST(request: NextRequest) {
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
-  // Check subscription gate -- free practices cannot post.
-  const { data: practice } = await supabase
-    .from("practice_profiles")
-    .select("practice_name, job_posting_subscription_active, city, state")
-    .eq("id", authData.user.id)
-    .maybeSingle();
-
-  if (!practice) {
-    return NextResponse.json({ error: "Practice profile not found" }, { status: 404 });
-  }
-
-  if (!practice.job_posting_subscription_active) {
-    return NextResponse.json(
-      { error: "Job posting subscription required", code: "subscription_required" },
-      { status: 403 }
-    );
   }
 
   const body = await request.json();
@@ -110,12 +78,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
 
-  const slug = generateSlug(title, practice.practice_name);
+  // Fetch practice profile — optional for drafts, required for publish.
+  const { data: practice } = await supabase
+    .from("practice_profiles")
+    .select("practice_name, job_posting_subscription_active, city, state")
+    .eq("id", authData.user.id)
+    .maybeSingle();
+
+  // Subscription gate — only enforced when publishing (status = "active").
+  // Drafts are always allowed so owners can prepare a posting before subscribing.
+  if (status === "active" && !practice?.job_posting_subscription_active) {
+    return NextResponse.json(
+      { error: "Job posting subscription required", code: "subscription_required" },
+      { status: 403 }
+    );
+  }
+
+  const slugBase = practice?.practice_name ?? authData.user.id.slice(0, 8);
+  const slug = generateSlug(title, slugBase);
   const now = new Date().toISOString();
-  const expires_at =
-    status === "active"
-      ? new Date(Date.now() + 30 * 86400000).toISOString()
-      : null;
+  const expires_at = status === "active"
+    ? new Date(Date.now() + 30 * 86400000).toISOString()
+    : null;
 
   const { data: posting, error } = await supabase
     .from("job_postings")
@@ -125,8 +109,8 @@ export async function POST(request: NextRequest) {
       title: title.trim(),
       role_id: role_id ?? null,
       employment_type: employment_type ?? null,
-      city: city ?? practice.city ?? null,
-      state: state ?? practice.state ?? null,
+      city: city ?? practice?.city ?? null,
+      state: state ?? practice?.state ?? null,
       zip: zip ?? null,
       pay_min: pay_min ?? null,
       pay_max: pay_max ?? null,
