@@ -56,6 +56,9 @@ export default async function OwnerJobsPage() {
     .eq("id", authData.user.id)
     .maybeSingle();
 
+  // Suppress unused variable warning — kept for future use
+  void practice;
+
   const { data: rawPostings } = await supabase
     .from("job_postings")
     .select(
@@ -65,7 +68,6 @@ export default async function OwnerJobsPage() {
     )
     .eq("owner_id", authData.user.id)
     .order("created_at", { ascending: false });
-
 
   const postings: NormalizedPosting[] = (rawPostings ?? []).map((p) => {
     const roleArr = p.role as { label: string }[] | { label: string } | null;
@@ -93,24 +95,19 @@ export default async function OwnerJobsPage() {
   const paused  = postings.filter((p) => p.status === "paused");
   const expired = postings.filter((p) => p.status === "expired").slice(0, 10);
 
-  // Gumroad checkout URL — only built when needed (user not subscribed)
-
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px" }}>
 
-      {/* Header — always visible */}
+      {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, gap: 16, flexWrap: "wrap" }}>
         <div>
           <p style={{ fontSize: 12, color: "var(--ink-faint)", marginBottom: 4 }}>Manage your listings</p>
           <h1 style={{ fontFamily: "var(--font-serif)", fontSize: 26, fontWeight: 700, margin: 0 }}>Job Postings</h1>
         </div>
-        {/* PostJobButton — always navigates to /owner/jobs/new; subscription gate is at Publish time */}
-            - subscribed → navigate to /owner/jobs/new
-            - not subscribed → open subscribe modal */}
         <PostJobButton />
       </div>
 
-      {/* Empty state — no postings yet (subscribed or not) */}
+      {/* Empty state */}
       {postings.length === 0 && (
         <div style={{ border: "1.5px dashed var(--line)", borderRadius: 16, padding: "52px 28px", textAlign: "center" }}>
           <div style={{ width: 52, height: 52, borderRadius: 14, background: "var(--teal-tint)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
