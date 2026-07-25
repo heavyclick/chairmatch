@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Briefcase, Plus, Users, Clock, PauseCircle, CheckCircle } from "lucide-react";
+import { PostJobButton } from "@/components/owner/post-job-button";
 
 function daysLeft(expiresAt: string | null): string | null {
   if (!expiresAt) return null;
@@ -20,15 +21,15 @@ function StatusBadge({ status }: { status: string }) {
   };
   const { label, style } = map[status] ?? { label: status, style: "bg-line text-ink-faint" };
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, letterSpacing: "0.06em" }} className={style}>
+    <span
+      style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, letterSpacing: "0.06em" }}
+      className={style}
+    >
       {label}
     </span>
   );
 }
 
-// Normalized shape used throughout this page — role and applications
-// come back as arrays from Supabase (PostgREST join behaviour) and are
-// flattened to plain objects right after the query.
 interface NormalizedPosting {
   id: string;
   slug: string;
@@ -67,15 +68,11 @@ export default async function OwnerJobsPage() {
 
   const hasSubscription = practice?.job_posting_subscription_active ?? false;
 
-  // Supabase returns FK joins as arrays even for to-one relationships.
-  // Normalize here so the rest of the component works with plain objects.
   const postings: NormalizedPosting[] = (rawPostings ?? []).map((p) => {
     const roleArr = p.role as { label: string }[] | { label: string } | null;
     const role = Array.isArray(roleArr) ? (roleArr[0] ?? null) : (roleArr ?? null);
-
     const appsArr = p.applications as { id: string; status: string }[] | null;
     const apps = Array.isArray(appsArr) ? appsArr : [];
-
     return {
       id: p.id,
       slug: p.slug,
@@ -97,65 +94,39 @@ export default async function OwnerJobsPage() {
   const paused  = postings.filter((p) => p.status === "paused");
   const expired = postings.filter((p) => p.status === "expired").slice(0, 10);
 
+  // Gumroad checkout URL — only built when needed (user not subscribed)
+  const checkoutUrl = !hasSubscription
+    ? `https://hdenta.gumroad.com/l/hdenta-job-postings?supabase_user_id=${authData.user.id}`
+    : null;
+
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px" }}>
-      {/* Header */}
+
+      {/* Header — always visible */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, gap: 16, flexWrap: "wrap" }}>
         <div>
           <p style={{ fontSize: 12, color: "var(--ink-faint)", marginBottom: 4 }}>Manage your listings</p>
           <h1 style={{ fontFamily: "var(--font-serif)", fontSize: 26, fontWeight: 700, margin: 0 }}>Job Postings</h1>
         </div>
-        {hasSubscription && (
-          <Link
-            href="/owner/jobs/new"
-            style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "var(--teal)", color: "#fff", fontSize: 13.5, fontWeight: 600, padding: "10px 18px", borderRadius: "var(--radius-control)", textDecoration: "none" }}
-          >
-            <Plus size={15} /> Post a Job
-          </Link>
-        )}
+        {/* PostJobButton handles the gate:
+            - subscribed → navigate to /owner/jobs/new
+            - not subscribed → open subscribe modal */}
+        <PostJobButton hasSubscription={hasSubscription} checkoutUrl={checkoutUrl} />
       </div>
 
-      {/* Paywall — no subscription */}
-      {!hasSubscription && (
-        <div style={{ border: "1.5px dashed var(--line)", borderRadius: 16, padding: "36px 28px", textAlign: "center", marginBottom: 32 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: "var(--teal-tint)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-            <Briefcase size={22} color="var(--teal-deep)" />
+      {/* Empty state — no postings yet (subscribed or not) */}
+      {postings.length === 0 && (
+        <div style={{ border: "1.5px dashed var(--line)", borderRadius: 16, padding: "52px 28px", textAlign: "center" }}>
+          <div style={{ width: 52, height: 52, borderRadius: 14, background: "var(--teal-tint)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <Briefcase size={24} color="var(--teal-deep)" />
           </div>
-          <h2 style={{ fontFamily: "var(--font-serif)", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-            Post jobs directly on Hdenta
-          </h2>
-          <p style={{ fontSize: 14, color: "var(--ink-soft)", maxWidth: 440, margin: "0 auto 24px", lineHeight: 1.6 }}>
-            Reach actively-looking dental candidates in your area. Unlimited postings for $50/month — cancel any time.
+          <p style={{ fontFamily: "var(--font-serif)", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
+            No job postings yet
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center", marginBottom: 20 }}>
-            {["Unlimited job postings", "AI-assisted job post drafting", "In-platform candidate applications", "Applicant inbox with messaging"].map((f) => (
-              <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
-                <CheckCircle size={14} color="var(--teal)" />
-                <span>{f}</span>
-              </div>
-            ))}
-          </div>
-          <Link
-            href={`https://hdenta.gumroad.com/l/hdenta-job-postings?supabase_user_id=${authData.user.id}`}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--teal)", color: "#fff", fontSize: 14, fontWeight: 700, padding: "12px 28px", borderRadius: "var(--radius-control)", textDecoration: "none" }}
-          >
-            Subscribe — $50/month
-          </Link>
-        </div>
-      )}
-
-      {/* Empty state — subscribed but no postings yet */}
-      {hasSubscription && postings.length === 0 && (
-        <div style={{ border: "1.5px dashed var(--line)", borderRadius: 16, padding: "40px 28px", textAlign: "center" }}>
-          <Briefcase size={24} color="var(--ink-faint)" style={{ margin: "0 auto 12px", display: "block" }} />
-          <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>No job postings yet</p>
-          <p style={{ fontSize: 13.5, color: "var(--ink-soft)", marginBottom: 20 }}>Post your first opening and start receiving applications from dental candidates.</p>
-          <Link
-            href="/owner/jobs/new"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--teal)", color: "#fff", fontSize: 13.5, fontWeight: 600, padding: "10px 20px", borderRadius: "var(--radius-control)", textDecoration: "none" }}
-          >
-            <Plus size={14} /> Post your first job
-          </Link>
+          <p style={{ fontSize: 14, color: "var(--ink-soft)", maxWidth: 400, margin: "0 auto 24px", lineHeight: 1.65 }}>
+            Post a job opening and start receiving applications from actively-looking dental candidates in your area.
+          </p>
+          <PostJobButton hasSubscription={hasSubscription} checkoutUrl={checkoutUrl} variant="cta" />
         </div>
       )}
 
@@ -186,7 +157,7 @@ export default async function OwnerJobsPage() {
         </Section>
       )}
 
-      {/* Expired (last 10) */}
+      {/* Expired */}
       {expired.length > 0 && (
         <Section title="Recently expired">
           {expired.map((p) => (
@@ -207,20 +178,12 @@ function Section({ title, icon, children }: { title: string; icon?: React.ReactN
           {title}
         </h2>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {children}
-      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
     </div>
   );
 }
 
-function PostingRow({
-  posting,
-  daysLeft: dl,
-}: {
-  posting: NormalizedPosting;
-  daysLeft: string | null;
-}) {
+function PostingRow({ posting, daysLeft: dl }: { posting: NormalizedPosting; daysLeft: string | null }) {
   return (
     <Link
       href={`/owner/jobs/${posting.id}`}
@@ -235,17 +198,9 @@ function PostingRow({
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12.5, color: "var(--ink-soft)", flexWrap: "wrap" }}>
           {posting.role && <span>{posting.role.label}</span>}
-          {(posting.city || posting.state) && (
-            <span>{[posting.city, posting.state].filter(Boolean).join(", ")}</span>
-          )}
-          {posting.employment_type && (
-            <span style={{ textTransform: "capitalize" }}>{posting.employment_type.replace("_", "-")}</span>
-          )}
-          {dl && (
-            <span style={{ color: "var(--ink-faint)", display: "flex", alignItems: "center", gap: 4 }}>
-              <Clock size={11} /> {dl}
-            </span>
-          )}
+          {(posting.city || posting.state) && <span>{[posting.city, posting.state].filter(Boolean).join(", ")}</span>}
+          {posting.employment_type && <span style={{ textTransform: "capitalize" }}>{posting.employment_type.replace("_", "-")}</span>}
+          {dl && <span style={{ color: "var(--ink-faint)", display: "flex", alignItems: "center", gap: 4 }}><Clock size={11} /> {dl}</span>}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
