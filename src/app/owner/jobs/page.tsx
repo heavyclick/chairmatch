@@ -56,7 +56,7 @@ export default async function OwnerJobsPage() {
     .eq("id", authData.user.id)
     .maybeSingle();
 
-  // Suppress unused variable warning — kept for future use
+  // Suppress unused variable warning — kept for future use 
   void practice;
 
   const { data: rawPostings } = await supabase
