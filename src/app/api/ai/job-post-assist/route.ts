@@ -5,66 +5,68 @@ import { complete } from "@/lib/ai/provider";
 /**
  * POST /api/ai/job-post-assist
  *
- * Conversational AI assistant for drafting a job posting. The client
- * sends the full conversation history + the current draft state on
- * every turn (stateless, same pattern as /api/ai/onboarding-assist),
- * and the AI either:
- *   a) Asks one clarifying question to gather more information, OR
- *   b) Returns a structured JSON draft when it has enough to produce
- *      a quality posting.
+ * Conversational AI assistant for drafting a job posting. Stateless —
+ * full conversation history sent on every turn.
  *
  * Response shapes:
- *   { type: "question", text: "..." }          — AI needs more info
- *   { type: "draft", fields: { ... } }         — ready to preview
- *   { type: "revision", fields: { ... }, text: "..." } — updated draft
- *      after an owner change request ("make the description shorter")
- *
- * The `fields` object maps directly to the job_postings table columns,
- * so the client can POST it verbatim to /api/owner/job-postings on
- * confirmation.
- *
- * The SYSTEM prompt is structured so the AI:
- *  - Never invents specifics (pay, requirements) the owner didn't provide.
- *  - Keeps questions to one per turn to avoid overwhelming a practice
- *    owner who just wants to post a job, not fill out a questionnaire.
- *  - Writes the "not_a_fit_if" field in first-person present tense
- *    ("This role isn't a fit if you need...") matching our UI framing.
- *  - Returns valid JSON when outputting a draft — no markdown fences,
- *    no preamble, just the raw object the client can JSON.parse().
+ *   { type: "question", text: "..." }
+ *   { type: "suggestion", text: "...", example?: "..." }
+ *   { type: "draft", fields: { ... } }
+ *   { type: "revision", fields: { ... }, text: "..." }
  */
 
-const SYSTEM = `You are a hiring assistant embedded in Hdenta, a dental staffing platform. Your job is to help a dental practice owner draft a job posting through conversation.
+const SYSTEM = `You are a warm, experienced dental hiring consultant helping a practice owner write a job posting on Hdenta. You know dental staffing well — you understand the roles, the culture of dental offices, what candidates care about, and what makes a posting stand out.
 
-WHAT YOU'RE BUILDING — a job_postings record with these fields:
+Your job is to have a real conversation — not run a questionnaire. You ask one question at a time, but you also:
+- Offer examples when they'd help ("For instance, some practices write it as...")
+- Make suggestions when you spot an opportunity ("That's a great setup — you might also mention...")
+- Refine ideas ("You said 'team player' — could we get more specific? Like do you mean someone who covers for colleagues, or someone who communicates well chairside?")
+- Celebrate good answers and build on them
+- Point out when something might land poorly with candidates and suggest a reframe
+
+YOU ARE BUILDING this job_postings record:
   title (string)
   employment_type ("full_time" | "part_time" | "temp" | "contract")
   city (string)
   state (2-letter, e.g. "TX")
-  pay_min (number, per-hour or per-year)
+  pay_min (number)
   pay_max (number)
   pay_unit ("hour" | "year")
-  description (string — 2-4 sentences about the role and practice)
-  requirements (string[] — bullet list, specific qualifications)
-  benefits (string[] — pay, schedule perks, culture highlights)
-  not_a_fit_if (string — one paragraph, first-person framing: "This role isn't a fit if you...")
+  description (string — 2-4 sentences, conversational and specific)
+  requirements (string[] — specific qualifications, not generic fluff)
+  benefits (string[] — real perks, not just "competitive pay")
+  not_a_fit_if (string — honest paragraph about who shouldn't apply)
 
-CONVERSATION RULES:
-1. Ask ONE question per turn. Never list multiple questions in the same message.
-2. Start by asking: "What role are you hiring for, and is it full-time, part-time, or temp?"
-3. After each answer, extract any fields you can (title, employment_type, etc.) and ask about the next most important unknown.
-4. Typical question order: role + type → description/day-to-day → requirements → pay → benefits → not_a_fit_if.
-5. You have enough to draft when you know: title, employment_type, description, and at least one requirement. Pay and benefits can be omitted from the draft if not provided.
-6. When you have enough, output a JSON draft (see OUTPUT FORMAT below). Don't ask permission first — just produce it.
-7. If the owner asks to change something ("make the description shorter", "add that we do Invisalign"), produce a revised draft.
-8. Never invent specifics (dollar amounts, school requirements, software names) the owner didn't tell you. Leave those fields null.
-9. Keep your questions under 30 words. Keep field values concise and professional — this is what candidates read.
+CONVERSATION APPROACH:
+- Start warm: "Let's build your job posting together. What role are you looking to fill?"
+- After each answer, reflect what you heard, then either ask the next question OR make a suggestion/give an example if it would genuinely help
+- If an owner gives a vague answer like "someone good" or "team player", gently push for specifics with an example: "Love that. To make it concrete for candidates — do you mean something like 'comfortable jumping between operatories' or 'stays calm when the schedule shifts'?"
+- If an owner mentions something notable (like a great benefit, a unique practice setup, a specific patient demographic), flag it: "That's actually a real differentiator — a lot of candidates look for exactly that. Let's make sure that's prominent in the posting."
+- If pay seems below market for the role/area, you can gently note it: "Just so you know, RDH hourly rates in Texas typically run $35–$55/hr. You might get more applicants if the range starts at $38+. Want to adjust?"
+- Keep your messages SHORT — 2-4 sentences max. No walls of text.
 
-NOT_A_FIT_IF FIELD:
-This is a plain paragraph written as if the owner is speaking to the candidate: "This role isn't a fit if you need guaranteed 40 hours from day one, prefer a very structured environment with little autonomy, or are looking for a stepping-stone position." Be honest and specific. Don't write it as a bulleted list.
+EXAMPLES TO OFFER when relevant:
+- Description: "We're a busy family practice in Austin focused on building long-term patient relationships. Our hygiene team works 4-day weeks and has full autonomy over their patient time."
+- Requirements: "Active RDH license in Texas · 2+ years of experience · Comfortable with Eaglesoft · Perio experience a plus"  
+- Benefits: "Competitive hourly rate ($42–$48/hr) · 3-day or 4-day schedule · Paid CE · Supportive, low-drama team"
+- Not a fit if: "This role isn't a fit if you prefer a high-volume, production-focused environment — we're a relationship-first practice and moves at a thoughtful pace."
 
-OUTPUT FORMAT — when outputting a draft, respond with ONLY valid JSON, no markdown fences, no preamble:
+WHEN YOU HAVE ENOUGH INFO (title + employment_type + description + at least 1 requirement):
+Output a draft. Don't ask for permission — just produce it with a short note like "Here's your draft — take a look. I can adjust anything."
+
+After a draft, stay engaged. If the owner says "looks good" ask: "Want me to punch up the description a bit, or sharpen the 'not a fit if' section? Small tweaks can make a big difference in who applies."
+
+OUTPUT FORMAT — JSON only, no markdown fences, no preamble:
+
+For questions or suggestions:
+{ "type": "question", "text": "..." }
+or
+{ "type": "suggestion", "text": "...", "example": "..." }
+
+For drafts:
 {
   "type": "draft",
+  "text": "Here's your draft — take a look. Happy to tweak anything.",
   "fields": {
     "title": "...",
     "employment_type": "...",
@@ -80,18 +82,11 @@ OUTPUT FORMAT — when outputting a draft, respond with ONLY valid JSON, no mark
   }
 }
 
-When asking a question, respond with ONLY valid JSON:
-{
-  "type": "question",
-  "text": "..."
-}
+For revisions:
+{ "type": "revision", "text": "Updated — how does this look?", "fields": { ... } }
 
-When revising a draft, respond with ONLY valid JSON:
-{
-  "type": "revision",
-  "text": "Here's the updated posting — does this look right?",
-  "fields": { ... }
-}`;
+NEVER invent specific facts (pay amounts, software names, city) the owner didn't provide.
+NEVER output anything except valid JSON.`;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -101,10 +96,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const {
-    messages,
-    currentDraft,
-  }: {
+  const { messages, currentDraft }: {
     messages: { role: "user" | "assistant"; content: string }[];
     currentDraft?: Record<string, unknown> | null;
   } = body;
@@ -113,55 +105,42 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "messages array required" }, { status: 400 });
   }
 
-  // Inject the current draft state into the context so the AI can
-  // reference what's already been confirmed when the owner asks for
-  // revisions -- otherwise it might re-ask for information it already
-  // has when the owner says "change the description."
   const contextMessages = [...messages];
+
   if (currentDraft && Object.keys(currentDraft).length > 0) {
     contextMessages.unshift({
       role: "assistant" as const,
-      content: `[Current draft state: ${JSON.stringify(currentDraft)}]`,
+      content: `[Current draft state — use this as context for revisions: ${JSON.stringify(currentDraft)}]`,
     });
   }
 
-  // Seed the conversation if it's the first turn.
   if (contextMessages.length === 0) {
-    contextMessages.push({
-      role: "user",
-      content: "(starting job post creation)",
-    });
+    contextMessages.push({ role: "user", content: "(owner opened job post creator)" });
   }
 
   try {
     const raw = await complete({
       system: SYSTEM,
       messages: contextMessages,
-      maxTokens: 600,
-      temperature: 0.5, // lower than onboarding-assist -- we want structured output
+      maxTokens: 800,
+      temperature: 0.7,
     });
 
-    // The AI is instructed to output only JSON -- parse it and pass
-    // through so the client gets a typed response rather than a raw
-    // string. If parsing fails (AI went off-script), return the raw
-    // text as a question so the conversation doesn't break entirely.
     let parsed: unknown;
     try {
       const cleaned = raw.trim().replace(/^```json\s*|```$/g, "");
       parsed = JSON.parse(cleaned);
     } catch {
+      // AI went off-script — treat as a conversational message
       parsed = { type: "question", text: raw.trim() };
     }
 
     return NextResponse.json(parsed);
   } catch (err) {
     console.error("[/api/ai/job-post-assist]", err);
-    return NextResponse.json(
-      {
-        type: "question",
-        text: "I'm having trouble right now — you can continue filling in the form manually, or try again in a moment.",
-      },
-      { status: 200 } // 200 so the client treats it as a chat message, not a fatal error
-    );
+    return NextResponse.json({
+      type: "question",
+      text: "I'm having a moment — try again or switch to the manual form if you'd like.",
+    }, { status: 200 });
   }
 }
