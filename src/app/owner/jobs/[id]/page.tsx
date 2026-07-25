@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Users, FileText, Pause, Play, Trash2, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowLeft, Users, FileText, Pause, Play, Trash2, ExternalLink, Loader2, EyeOff } from "lucide-react";
+import { useSubscriptionGate } from "@/components/owner/subscribe-modal";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 interface Application {
   id: string;
   status: "pending" | "reviewed" | "hired" | "rejected";
@@ -56,12 +56,12 @@ function daysAgo(iso: string) {
   return d === 0 ? "Today" : d === 1 ? "Yesterday" : `${d}d ago`;
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
 export default function JobDetailPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
   const postingId = params.id;
+  const gate = useSubscriptionGate();
 
   const [posting, setPosting] = useState<Posting | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,6 +88,11 @@ export default function JobDetailPage() {
   useEffect(() => { fetchPosting(); }, [fetchPosting]);
 
   async function updatePostingStatus(newStatus: string) {
+    // Subscription gate — required to publish or reactivate
+    if (newStatus === "active") {
+      const ok = await gate.check();
+      if (!ok) return;
+    }
     setActionLoading(true);
     await fetch(`/api/owner/job-postings/${postingId}`, {
       method: "PATCH",
@@ -116,51 +121,87 @@ export default function JobDetailPage() {
     setStatusUpdating(null);
   }
 
-  if (loading) return <div style={{ padding: 40, textAlign: "center", color: "var(--ink-faint)", fontSize: 14 }}>Loading…</div>;
-  if (error || !posting) return <div style={{ padding: 40, textAlign: "center", color: "var(--coral)", fontSize: 14 }}>{error ?? "Not found."}</div>;
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: "#9ab0ac", fontSize: 14 }}>Loading…</div>;
+  if (error || !posting) return <div style={{ padding: 40, textAlign: "center", color: "#e05b4b", fontSize: 14 }}>{error ?? "Not found."}</div>;
 
   const pendingCount = posting.applications.filter((a) => a.status === "pending").length;
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "24px 20px 60px" }}>
+      <gate.Modal />
+
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
         <div>
-          <Link href="/owner/jobs" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, color: "var(--ink-soft)", textDecoration: "none", marginBottom: 6 }}>
+          <Link href="/owner/jobs" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, color: "#6b7e7a", textDecoration: "none", marginBottom: 6 }}>
             <ArrowLeft size={13} /> All postings
           </Link>
-          <h1 style={{ fontFamily: "var(--font-serif)", fontSize: 22, fontWeight: 700, margin: 0 }}>{posting.title}</h1>
-          <p style={{ fontSize: 13, color: "var(--ink-soft)", marginTop: 3 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{posting.title}</h1>
+          <p style={{ fontSize: 13, color: "#6b7e7a", marginTop: 3 }}>
             {[posting.city, posting.state].filter(Boolean).join(", ")}
             {posting.employment_type && ` · ${posting.employment_type.replace("_", "-")}`}
             {" · "}
-            <span style={{ fontWeight: 600, color: posting.status === "active" ? "var(--teal-deep)" : "var(--ink-faint)", textTransform: "capitalize" }}>
+            <span style={{ fontWeight: 600, color: posting.status === "active" ? "#2D705F" : "#9ab0ac", textTransform: "capitalize" }}>
               {posting.status}
             </span>
           </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {/* Publish / Reactivate */}
+          {(posting.status === "paused" || posting.status === "draft") && (
+            <button
+              onClick={() => updatePostingStatus("active")}
+              disabled={actionLoading}
+              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "#ffffff", background: "#2D705F", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer" }}
+            >
+              <Play size={13} color="#ffffff" />
+              {posting.status === "draft" ? "Publish" : "Reactivate"}
+            </button>
+          )}
+
+          {/* Stop receiving applicants — take offline without deleting */}
           {posting.status === "active" && (
-            <button onClick={() => updatePostingStatus("paused")} disabled={actionLoading} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "var(--ink-soft)", background: "var(--bg-raised)", border: "1px solid var(--line)", borderRadius: "var(--radius-control)", padding: "8px 14px", cursor: "pointer" }}>
+            <button
+              onClick={() => updatePostingStatus("paused")}
+              disabled={actionLoading}
+              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "#6b7e7a", background: "#ffffff", border: "1px solid #e2e8e6", borderRadius: 8, padding: "8px 14px", cursor: "pointer" }}
+            >
+              <EyeOff size={13} />
+              Stop receiving applicants
+            </button>
+          )}
+
+          {/* Pause — same as stop but labelled differently for paused state */}
+          {posting.status === "active" && (
+            <button
+              onClick={() => updatePostingStatus("paused")}
+              disabled={actionLoading}
+              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "#6b7e7a", background: "#ffffff", border: "1px solid #e2e8e6", borderRadius: 8, padding: "8px 14px", cursor: "pointer" }}
+            >
               <Pause size={13} /> Pause
             </button>
           )}
-          {(posting.status === "paused" || posting.status === "draft") && (
-            <button onClick={() => updatePostingStatus("active")} disabled={actionLoading} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "#fff", background: "var(--teal)", border: "none", borderRadius: "var(--radius-control)", padding: "8px 14px", cursor: "pointer" }}>
-              <Play size={13} /> {posting.status === "draft" ? "Publish" : "Reactivate"}
-            </button>
-          )}
-          <Link href={`/owner/jobs/${posting.id}/edit`} style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-soft)", background: "var(--bg-raised)", border: "1px solid var(--line)", borderRadius: "var(--radius-control)", padding: "8px 14px", textDecoration: "none" }}>
+
+          <Link
+            href={`/owner/jobs/${posting.id}/edit`}
+            style={{ fontSize: 13, fontWeight: 600, color: "#6b7e7a", background: "#ffffff", border: "1px solid #e2e8e6", borderRadius: 8, padding: "8px 14px", textDecoration: "none" }}
+          >
             Edit
           </Link>
-          <button onClick={deletePosting} disabled={actionLoading} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "var(--coral)", background: "none", border: "1px solid var(--coral)/30", borderRadius: "var(--radius-control)", padding: "8px 12px", cursor: "pointer" }}>
+
+          <button
+            onClick={deletePosting}
+            disabled={actionLoading}
+            style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: "#e05b4b", background: "none", border: "1px solid #f5c0ba", borderRadius: 8, padding: "8px 12px", cursor: "pointer" }}
+          >
             <Trash2 size={13} />
           </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--line)", marginBottom: 24 }}>
+      <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #e2e8e6", marginBottom: 24 }}>
         {[
           { key: "posting", label: "Posting", icon: <FileText size={13} /> },
           { key: "applicants", label: `Applicants${posting.applications.length > 0 ? ` (${posting.applications.length})` : ""}`, icon: <Users size={13} />, badge: pendingCount },
@@ -168,14 +209,10 @@ export default function JobDetailPage() {
           <button
             key={t.key}
             onClick={() => setTab(t.key as "posting" | "applicants")}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 16px", fontSize: 13.5, fontWeight: 600, background: "none", border: "none", borderBottom: tab === t.key ? "2px solid var(--teal)" : "2px solid transparent", color: tab === t.key ? "var(--teal-deep)" : "var(--ink-soft)", cursor: "pointer", marginBottom: -1 }}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 16px", fontSize: 13.5, fontWeight: 600, background: "none", border: "none", borderBottom: tab === t.key ? "2px solid #2D705F" : "2px solid transparent", color: tab === t.key ? "#2D705F" : "#6b7e7a", cursor: "pointer", marginBottom: -1 }}
           >
             {t.icon} {t.label}
-            {t.badge ? (
-              <span style={{ background: "var(--coral)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "1px 6px" }}>
-                {t.badge}
-              </span>
-            ) : null}
+            {t.badge ? <span style={{ background: "#e05b4b", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "1px 6px" }}>{t.badge}</span> : null}
           </button>
         ))}
       </div>
@@ -183,28 +220,20 @@ export default function JobDetailPage() {
       {/* Posting tab */}
       {tab === "posting" && (
         <div style={{ maxWidth: 600 }}>
-          {posting.description && (
-            <Section title="Description">
-              <p style={{ fontSize: 14.5, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{posting.description}</p>
-            </Section>
-          )}
+          {posting.description && <Section title="Description"><p style={{ fontSize: 14.5, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{posting.description}</p></Section>}
           {posting.requirements?.length > 0 && (
             <Section title="Requirements">
-              <ul style={{ paddingLeft: 18, margin: 0 }}>
-                {posting.requirements.map((r, i) => <li key={i} style={{ fontSize: 14, marginBottom: 4 }}>{r}</li>)}
-              </ul>
+              <ul style={{ paddingLeft: 18, margin: 0 }}>{posting.requirements.map((r, i) => <li key={i} style={{ fontSize: 14, marginBottom: 4 }}>{r}</li>)}</ul>
             </Section>
           )}
           {posting.benefits?.length > 0 && (
             <Section title="Benefits">
-              <ul style={{ paddingLeft: 18, margin: 0 }}>
-                {posting.benefits.map((b, i) => <li key={i} style={{ fontSize: 14, marginBottom: 4 }}>{b}</li>)}
-              </ul>
+              <ul style={{ paddingLeft: 18, margin: 0 }}>{posting.benefits.map((b, i) => <li key={i} style={{ fontSize: 14, marginBottom: 4 }}>{b}</li>)}</ul>
             </Section>
           )}
           {posting.not_a_fit_if && (
             <Section title="This role isn't a fit if…">
-              <p style={{ fontSize: 14, lineHeight: 1.65, fontStyle: "italic", color: "var(--ink-soft)", borderLeft: "3px solid var(--amber, #f59e0b)", paddingLeft: 12 }}>{posting.not_a_fit_if}</p>
+              <p style={{ fontSize: 14, lineHeight: 1.65, fontStyle: "italic", color: "#6b7e7a", borderLeft: "3px solid #f59e0b", paddingLeft: 12 }}>{posting.not_a_fit_if}</p>
             </Section>
           )}
         </div>
@@ -214,20 +243,15 @@ export default function JobDetailPage() {
       {tab === "applicants" && (
         <div>
           {posting.applications.length === 0 ? (
-            <div style={{ border: "1.5px dashed var(--line)", borderRadius: 14, padding: "36px 24px", textAlign: "center", color: "var(--ink-faint)" }}>
+            <div style={{ border: "1.5px dashed #e2e8e6", borderRadius: 14, padding: "36px 24px", textAlign: "center", color: "#9ab0ac" }}>
               <Users size={22} style={{ margin: "0 auto 10px", display: "block" }} />
-              <p style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 4 }}>No applications yet</p>
-              <p style={{ fontSize: 13, color: "var(--ink-soft)" }}>Candidates who apply will appear here.</p>
+              <p style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 4, color: "#1a2e29" }}>No applications yet</p>
+              <p style={{ fontSize: 13 }}>Candidates who apply will appear here.</p>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {posting.applications.map((app) => (
-                <ApplicantCard
-                  key={app.id}
-                  app={app}
-                  onStatusChange={(newStatus) => updateApplicationStatus(app.id, newStatus)}
-                  updating={statusUpdating === app.id}
-                />
+                <ApplicantCard key={app.id} app={app} onStatusChange={(s) => updateApplicationStatus(app.id, s)} updating={statusUpdating === app.id} />
               ))}
             </div>
           )}
@@ -240,7 +264,7 @@ export default function JobDetailPage() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 24 }}>
-      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--ink-faint)", marginBottom: 8 }}>{title}</p>
+      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9ab0ac", marginBottom: 8 }}>{title}</p>
       {children}
     </div>
   );
@@ -251,19 +275,19 @@ function ApplicantCard({ app, onStatusChange, updating }: { app: Application; on
   const statusInfo = STATUS_LABELS[app.status] ?? { label: app.status, next: "pending", nextLabel: "Reset" };
 
   return (
-    <div style={{ border: "1px solid var(--line)", borderRadius: 14, padding: "16px 18px", background: "var(--bg-raised)" }}>
+    <div style={{ border: "1px solid #e2e8e6", borderRadius: 14, padding: "16px 18px", background: "#ffffff" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {c?.photo_url ? (
             <img src={c.photo_url} alt="" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
           ) : (
-            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--teal-tint)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#e8f4f1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0, fontWeight: 600, color: "#2D705F" }}>
               {c?.full_name?.[0] ?? "?"}
             </div>
           )}
           <div>
-            <p style={{ fontWeight: 700, fontSize: 14.5, margin: 0 }}>{c?.full_name ?? "Unknown candidate"}</p>
-            <p style={{ fontSize: 12.5, color: "var(--ink-soft)", margin: "2px 0 0" }}>
+            <p style={{ fontWeight: 700, fontSize: 14.5, margin: 0, color: "#1a2e29" }}>{c?.full_name ?? "Unknown candidate"}</p>
+            <p style={{ fontSize: 12.5, color: "#6b7e7a", margin: "2px 0 0" }}>
               {c?.role?.label}
               {c?.years_experience ? ` · ${c.years_experience}yr exp` : ""}
               {(c?.city || c?.state) ? ` · ${[c.city, c.state].filter(Boolean).join(", ")}` : ""}
@@ -271,46 +295,38 @@ function ApplicantCard({ app, onStatusChange, updating }: { app: Application; on
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 999, background: app.status === "hired" ? "var(--teal-tint)" : app.status === "rejected" ? "var(--line)" : "var(--bg)", border: "1px solid var(--line)", color: app.status === "hired" ? "var(--teal-deep)" : "var(--ink-soft)" }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 999, background: app.status === "hired" ? "#e8f4f1" : "#f4f7f6", border: "1px solid #e2e8e6", color: app.status === "hired" ? "#2D705F" : "#6b7e7a" }}>
             {statusInfo.label}
           </span>
-          <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>{daysAgo(app.created_at)}</span>
+          <span style={{ fontSize: 11.5, color: "#9ab0ac" }}>{daysAgo(app.created_at)}</span>
         </div>
       </div>
 
       {app.cover_note && (
-        <div style={{ marginTop: 12, padding: "10px 14px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 10 }}>
-          <p style={{ fontSize: 13.5, lineHeight: 1.6, fontStyle: "italic", color: "var(--ink-soft)", margin: 0 }}>"{app.cover_note}"</p>
+        <div style={{ marginTop: 12, padding: "10px 14px", background: "#f8faf9", border: "1px solid #e2e8e6", borderRadius: 10 }}>
+          <p style={{ fontSize: 13.5, lineHeight: 1.6, fontStyle: "italic", color: "#6b7e7a", margin: 0 }}>"{app.cover_note}"</p>
         </div>
       )}
 
       {c?.value_add_text && (
-        <div style={{ marginTop: 8 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Their profile summary</p>
-          <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--ink)", margin: 0 }}>{c.value_add_text}</p>
+        <div style={{ marginTop: 10 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: "#9ab0ac", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Profile summary</p>
+          <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "#1a2e29", margin: 0 }}>{c.value_add_text}</p>
         </div>
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         {c?.id && (
-          <Link href={`/owner/candidate/${c.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "var(--teal-deep)", background: "var(--teal-tint)", border: "1px solid var(--teal)/20", borderRadius: "var(--radius-control)", padding: "6px 12px", textDecoration: "none" }}>
+          <Link href={`/owner/candidate/${c.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "#2D705F", background: "#e8f4f1", border: "1px solid #b8d9d0", borderRadius: 8, padding: "6px 12px", textDecoration: "none" }}>
             View full profile <ExternalLink size={11} />
           </Link>
         )}
-        <button
-          onClick={() => onStatusChange(statusInfo.next)}
-          disabled={updating}
-          style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "var(--ink-soft)", background: "var(--bg-raised)", border: "1px solid var(--line)", borderRadius: "var(--radius-control)", padding: "6px 12px", cursor: "pointer" }}
-        >
+        <button onClick={() => onStatusChange(statusInfo.next)} disabled={updating} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "#6b7e7a", background: "#ffffff", border: "1px solid #e2e8e6", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
           {updating ? <Loader2 size={12} className="animate-spin" /> : null}
           {statusInfo.nextLabel}
         </button>
         {app.status !== "rejected" && (
-          <button
-            onClick={() => onStatusChange("rejected")}
-            disabled={updating}
-            style={{ fontSize: 13, fontWeight: 600, color: "var(--coral)", background: "none", border: "1px solid var(--coral)/25", borderRadius: "var(--radius-control)", padding: "6px 12px", cursor: "pointer" }}
-          >
+          <button onClick={() => onStatusChange("rejected")} disabled={updating} style={{ fontSize: 13, fontWeight: 600, color: "#e05b4b", background: "none", border: "1px solid #f5c0ba", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
             Not moving forward
           </button>
         )}
