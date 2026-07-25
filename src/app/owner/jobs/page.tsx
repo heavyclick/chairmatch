@@ -66,7 +66,6 @@ export default async function OwnerJobsPage() {
     .eq("owner_id", authData.user.id)
     .order("created_at", { ascending: false });
 
-  const hasSubscription = practice?.job_posting_subscription_active ?? false;
 
   const postings: NormalizedPosting[] = (rawPostings ?? []).map((p) => {
     const roleArr = p.role as { label: string }[] | { label: string } | null;
@@ -95,9 +94,6 @@ export default async function OwnerJobsPage() {
   const expired = postings.filter((p) => p.status === "expired").slice(0, 10);
 
   // Gumroad checkout URL — only built when needed (user not subscribed)
-  const checkoutUrl = !hasSubscription
-    ? `https://hdenta.gumroad.com/l/hdenta-job-postings?supabase_user_id=${authData.user.id}`
-    : null;
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "28px 20px 60px" }}>
@@ -108,10 +104,10 @@ export default async function OwnerJobsPage() {
           <p style={{ fontSize: 12, color: "var(--ink-faint)", marginBottom: 4 }}>Manage your listings</p>
           <h1 style={{ fontFamily: "var(--font-serif)", fontSize: 26, fontWeight: 700, margin: 0 }}>Job Postings</h1>
         </div>
-        {/* PostJobButton handles the gate:
+        {/* PostJobButton — always navigates to /owner/jobs/new; subscription gate is at Publish time */}
             - subscribed → navigate to /owner/jobs/new
             - not subscribed → open subscribe modal */}
-        <PostJobButton hasSubscription={hasSubscription} checkoutUrl={checkoutUrl} />
+        <PostJobButton />
       </div>
 
       {/* Empty state — no postings yet (subscribed or not) */}
@@ -126,7 +122,7 @@ export default async function OwnerJobsPage() {
           <p style={{ fontSize: 14, color: "var(--ink-soft)", maxWidth: 400, margin: "0 auto 24px", lineHeight: 1.65 }}>
             Post a job opening and start receiving applications from actively-looking dental candidates in your area.
           </p>
-          <PostJobButton hasSubscription={hasSubscription} checkoutUrl={checkoutUrl} variant="cta" />
+          <PostJobButton variant="cta" />
         </div>
       )}
 
