@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Loader2, ArrowLeft, Pencil, Bot, X, CheckCircle, ExternalLink } from "lucide-react";
+import { Send, Loader2, ArrowLeft, Pencil, Bot, Lightbulb } from "lucide-react";
+import { useSubscriptionGate } from "@/components/owner/subscribe-modal";
 
 const DEFAULT_MODE: "ai" | "manual" = "ai";
 
@@ -23,6 +24,8 @@ interface DraftFields {
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  isSuggestion?: boolean;
+  example?: string;
 }
 
 const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
@@ -32,95 +35,24 @@ const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
   contract: "Contract",
 };
 
-// ── Subscribe modal ───────────────────────────────────────────────────────────
-function SubscribeModal({ checkoutUrl, onClose }: { checkoutUrl: string; onClose: () => void }) {
-  return (
-    <div
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-    >
-      <div style={{ background: "#ffffff", borderRadius: 20, padding: "32px 28px", maxWidth: 420, width: "100%", position: "relative", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
-        <button
-          onClick={onClose}
-          style={{ position: "absolute", top: 14, right: 14, width: 28, height: 28, borderRadius: "50%", border: "1px solid #e2e8e6", background: "#f8faf9", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-        >
-          <X size={13} color="#6b7e7a" />
-        </button>
-
-        <div style={{ width: 48, height: 48, borderRadius: 12, background: "#e8f4f1", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-          <span style={{ fontSize: 22 }}>💼</span>
-        </div>
-
-        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: "#1a2e29" }}>
-          One last step — subscribe to post
-        </h2>
-        <p style={{ fontSize: 14, color: "#5a7570", lineHeight: 1.65, marginBottom: 20 }}>
-          Your job posting is ready. Subscribe for $50/month to publish it and start receiving applications.
-        </p>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
-          {["Unlimited job postings", "AI-assisted drafting", "In-platform candidate applications", "Applicant inbox with messaging"].map((f) => (
-            <div key={f} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5, color: "#1a2e29" }}>
-              <CheckCircle size={15} color="#2D705F" style={{ flexShrink: 0 }} />
-              {f}
-            </div>
-          ))}
-        </div>
-
-        <a
-          href={checkoutUrl}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, width: "100%", padding: "13px 0", background: "#2D705F", color: "#ffffff", fontSize: 14, fontWeight: 700, borderRadius: 10, textDecoration: "none", boxSizing: "border-box" as const }}
-        >
-          Subscribe — $50/month <ExternalLink size={13} color="#ffffff" />
-        </a>
-
-        <p style={{ textAlign: "center", fontSize: 12, color: "#8fa8a3", marginTop: 12 }}>
-          Cancel any time · 14-day money-back guarantee
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
 export default function NewJobPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"ai" | "manual">(DEFAULT_MODE);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftFields>({});
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-  const [checkoutUrl, setCheckoutUrl] = useState<string>("");
-
-  // Fetch the owner's subscription status + their user ID for the
-  // Gumroad checkout URL. Done client-side so this stays a client
-  // component without needing a separate server wrapper.
-  useEffect(() => {
-    fetch("/api/owner/subscription-status")
-      .then((r) => r.json())
-      .then((data) => {
-        setCheckoutUrl(data.checkoutUrl ?? "");
-      })
-      .catch(() => {});
-  }, []);
+  const gate = useSubscriptionGate();
 
   async function handlePublish(status: "draft" | "active") {
     if (!draft.title?.trim()) {
       setError("Job title is required before publishing.");
       return;
     }
-
-    // For "active" status, check subscription before hitting the API.
+    // Gate check — only for publish, not draft saves
     if (status === "active") {
-      const res = await fetch("/api/owner/subscription-status");
-      const data = await res.json();
-      if (!data.hasJobPostingSubscription) {
-        setCheckoutUrl(data.checkoutUrl ?? "");
-        setShowSubscribeModal(true);
-        return;
-      }
+      const ok = await gate.check();
+      if (!ok) return;
     }
-
     setSubmitting(true);
     setError(null);
     try {
@@ -131,13 +63,9 @@ export default function NewJobPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        // If the API also catches a missing subscription (race condition
-        // where status changed between our check and the API call),
-        // show the modal instead of a generic error.
         if (data.code === "subscription_required") {
-          setCheckoutUrl(data.checkoutUrl ?? checkoutUrl);
-          setShowSubscribeModal(true);
-          return;
+          const ok = await gate.check();
+          if (!ok) return;
         }
         setError(data.error ?? "Failed to save posting.");
         return;
@@ -152,10 +80,7 @@ export default function NewJobPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: "calc(100vh - 60px)" }}>
-
-      {showSubscribeModal && checkoutUrl && (
-        <SubscribeModal checkoutUrl={checkoutUrl} onClose={() => setShowSubscribeModal(false)} />
-      )}
+      <gate.Modal />
 
       {/* Top bar */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderBottom: "1px solid #e2e8e6", background: "#f8faf9", flexWrap: "wrap", gap: 12 }}>
@@ -168,33 +93,19 @@ export default function NewJobPage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {mode === "ai" && (
-            <button
-              onClick={() => setMode("manual")}
-              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "#6b7e7a", background: "none", border: "1px solid #e2e8e6", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}
-            >
+            <button onClick={() => setMode("manual")} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "#6b7e7a", background: "none", border: "1px solid #e2e8e6", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
               <Pencil size={12} /> Fill it in myself
             </button>
           )}
           {mode === "manual" && (
-            <button
-              onClick={() => setMode("ai")}
-              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "#2D705F", background: "#e8f4f1", border: "1px solid #b8d9d0", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}
-            >
+            <button onClick={() => setMode("ai")} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "#2D705F", background: "#e8f4f1", border: "1px solid #b8d9d0", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
               <Bot size={12} /> Switch to AI chat
             </button>
           )}
-          <button
-            onClick={() => handlePublish("draft")}
-            disabled={submitting}
-            style={{ fontSize: 13, fontWeight: 600, color: "#6b7e7a", background: "#ffffff", border: "1px solid #e2e8e6", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}
-          >
+          <button onClick={() => handlePublish("draft")} disabled={submitting} style={{ fontSize: 13, fontWeight: 600, color: "#6b7e7a", background: "#ffffff", border: "1px solid #e2e8e6", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
             Save draft
           </button>
-          <button
-            onClick={() => handlePublish("active")}
-            disabled={submitting}
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "#ffffff", background: "#2D705F", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer" }}
-          >
+          <button onClick={() => handlePublish("active")} disabled={submitting} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "#ffffff", background: "#2D705F", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer" }}>
             {submitting ? <Loader2 size={13} className="animate-spin" /> : null}
             Publish
           </button>
@@ -207,7 +118,6 @@ export default function NewJobPage() {
         </div>
       )}
 
-      {/* Split panel */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {mode === "ai" ? (
           <AIChatPanel draft={draft} onDraftUpdate={setDraft} />
@@ -234,32 +144,42 @@ function AIChatPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraftUpda
 
   const sendToAI = useCallback(async (history: ChatMessage[], userMessage?: string) => {
     setLoading(true);
-    const newHistory: ChatMessage[] = userMessage
-      ? [...history, { role: "user" as const, content: userMessage }]
-      : history;
+    const apiHistory = history.map(({ role, content }) => ({ role, content }));
+    const newApiHistory = userMessage
+      ? [...apiHistory, { role: "user" as const, content: userMessage }]
+      : apiHistory;
 
     try {
       const res = await fetch("/api/ai/job-post-assist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newHistory, currentDraft: draft }),
+        body: JSON.stringify({ messages: newApiHistory, currentDraft: draft }),
       });
       const data = await res.json();
 
+      const addUserMsg = userMessage
+        ? (prev: ChatMessage[]) => [...prev, { role: "user" as const, content: userMessage }]
+        : (prev: ChatMessage[]) => prev;
+
       if (data.type === "draft" || data.type === "revision") {
         onDraftUpdate({ ...draft, ...data.fields });
-        const confirmText = data.text ?? "Here's your job posting draft — does this look right? You can ask me to change anything, or hit Publish when you're happy.";
-        const aiMsg: ChatMessage = { role: "assistant", content: confirmText };
-        setMessages((prev) => [...(userMessage ? [...prev, { role: "user" as const, content: userMessage }] : prev), aiMsg]);
+        const text = data.text ?? "Here's your draft — take a look. I can adjust anything.";
+        setMessages((prev) => [...addUserMsg(prev), { role: "assistant", content: text }]);
+      } else if (data.type === "suggestion") {
+        setMessages((prev) => [...addUserMsg(prev), {
+          role: "assistant",
+          content: data.text ?? "",
+          isSuggestion: true,
+          example: data.example,
+        }]);
       } else {
-        const aiMsg: ChatMessage = { role: "assistant", content: data.text ?? "..." };
-        setMessages((prev) => [...(userMessage ? [...prev, { role: "user" as const, content: userMessage }] : prev), aiMsg]);
+        setMessages((prev) => [...addUserMsg(prev), { role: "assistant", content: data.text ?? "..." }]);
       }
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant" as const, content: "I'm having a bit of trouble right now. You can switch to the manual form above, or try again." },
-      ]);
+      setMessages((prev) => [...(userMessage ? [...prev, { role: "user" as const, content: userMessage }] : prev), {
+        role: "assistant",
+        content: "I'm having a moment — try again or switch to the manual form if you'd like.",
+      }]);
     } finally {
       setLoading(false);
     }
@@ -284,27 +204,35 @@ function AIChatPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraftUpda
         {messages.map((m, i) => (
           <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 12 }}>
             {m.role === "assistant" && (
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#e8f4f1", border: "1px solid #b8d9d0", display: "flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0, alignSelf: "flex-end" }}>
-                <Bot size={13} color="#2D705F" />
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: m.isSuggestion ? "#fef9e7" : "#e8f4f1", border: `1px solid ${m.isSuggestion ? "#f7dc6f" : "#b8d9d0"}`, display: "flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0, alignSelf: "flex-start", marginTop: 2 }}>
+                {m.isSuggestion ? <Lightbulb size={13} color="#d4a017" /> : <Bot size={13} color="#2D705F" />}
               </div>
             )}
-            <div style={{
-              maxWidth: "78%",
-              padding: "10px 14px",
-              borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-              background: m.role === "user" ? "#2D705F" : "#ffffff",
-              color: m.role === "user" ? "#ffffff" : "#1a2e29",
-              border: m.role === "assistant" ? "1px solid #e2e8e6" : "none",
-              fontSize: 13.5,
-              lineHeight: 1.55,
-              whiteSpace: "pre-wrap" as const,
-            }}>
-              {m.content}
+            <div style={{ maxWidth: "78%", display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{
+                padding: "10px 14px",
+                borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                background: m.role === "user" ? "#2D705F" : m.isSuggestion ? "#fefdf5" : "#ffffff",
+                color: m.role === "user" ? "#ffffff" : "#1a2e29",
+                border: m.role === "assistant" ? `1px solid ${m.isSuggestion ? "#f7dc6f" : "#e2e8e6"}` : "none",
+                fontSize: 13.5,
+                lineHeight: 1.55,
+                whiteSpace: "pre-wrap" as const,
+              }}>
+                {m.content}
+              </div>
+              {/* Example block — shown below the message bubble */}
+              {m.example && (
+                <div style={{ padding: "8px 12px", borderRadius: 8, background: "#f4f7f6", border: "1px solid #e2e8e6", fontSize: 12.5, color: "#4a6b65", lineHeight: 1.5, fontStyle: "italic" }}>
+                  <span style={{ fontStyle: "normal", fontWeight: 700, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9ab0ac", display: "block", marginBottom: 3 }}>Example</span>
+                  {m.example}
+                </div>
+              )}
             </div>
           </div>
         ))}
         {loading && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9ab0ac", fontSize: 13 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9ab0ac", fontSize: 13, marginLeft: 36 }}>
             <Loader2 size={13} className="animate-spin" /> Thinking…
           </div>
         )}
@@ -322,7 +250,7 @@ function AIChatPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraftUpda
         <button
           onClick={handleSend}
           disabled={loading || !input.trim()}
-          style={{ width: 40, height: 40, borderRadius: 8, background: "#2D705F", color: "#ffffff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
+          style={{ width: 40, height: 40, borderRadius: 8, background: "#2D705F", color: "#ffffff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, opacity: loading || !input.trim() ? 0.5 : 1 }}
         >
           <Send size={15} />
         </button>
@@ -336,24 +264,19 @@ function ManualFormPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraft
   function set(field: keyof DraftFields, value: unknown) {
     onDraftUpdate({ ...draft, [field]: value });
   }
-
   function handleListField(field: "requirements" | "benefits", value: string) {
-    const items = value.split("\n").map((l) => l.trim()).filter(Boolean);
-    set(field, items);
+    set(field, value.split("\n").map((l) => l.trim()).filter(Boolean));
   }
-
   const inputStyle: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e2e8e6", fontSize: 13.5, background: "#ffffff", boxSizing: "border-box" };
   const labelStyle: React.CSSProperties = { fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#8fa8a3", display: "block", marginBottom: 5 };
 
   return (
     <div style={{ flex: 1, overflowY: "auto", borderRight: "1px solid #e2e8e6", padding: "24px 24px 40px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 500 }}>
-
         <div>
           <label style={labelStyle}>Job Title *</label>
           <input style={inputStyle} value={draft.title ?? ""} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Dental Hygienist – Part-Time" />
         </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
             <label style={labelStyle}>Employment Type</label>
@@ -371,7 +294,6 @@ function ManualFormPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraft
             </select>
           </div>
         </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
             <label style={labelStyle}>Pay Min</label>
@@ -382,7 +304,6 @@ function ManualFormPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraft
             <input style={inputStyle} type="number" value={draft.pay_max ?? ""} onChange={(e) => set("pay_max", e.target.value ? Number(e.target.value) : null)} placeholder="e.g. 55" />
           </div>
         </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
             <label style={labelStyle}>City</label>
@@ -393,28 +314,23 @@ function ManualFormPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraft
             <input style={inputStyle} value={draft.state ?? ""} onChange={(e) => set("state", e.target.value.toUpperCase().slice(0, 2))} placeholder="TX" maxLength={2} />
           </div>
         </div>
-
         <div>
           <label style={labelStyle}>Description</label>
           <textarea style={{ ...inputStyle, minHeight: 100, resize: "vertical" }} value={draft.description ?? ""} onChange={(e) => set("description", e.target.value)} placeholder="What does a typical day look like? What's the practice culture?" />
         </div>
-
         <div>
           <label style={labelStyle}>Requirements <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(one per line)</span></label>
           <textarea style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} value={(draft.requirements ?? []).join("\n")} onChange={(e) => handleListField("requirements", e.target.value)} placeholder={"Active RDH license\n2+ years chairside experience\nFamiliar with Dentrix"} />
         </div>
-
         <div>
           <label style={labelStyle}>Benefits <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(one per line)</span></label>
           <textarea style={{ ...inputStyle, minHeight: 70, resize: "vertical" }} value={(draft.benefits ?? []).join("\n")} onChange={(e) => handleListField("benefits", e.target.value)} placeholder={"Competitive hourly rate\nFlexible 3-day schedule\nTeam lunches"} />
         </div>
-
         <div>
           <label style={labelStyle}>This role isn't a fit if…</label>
           <p style={{ fontSize: 12, color: "#8fa8a3", marginBottom: 6, lineHeight: 1.5 }}>Be honest — this saves everyone time.</p>
-          <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={draft.not_a_fit_if ?? ""} onChange={(e) => set("not_a_fit_if", e.target.value)} placeholder="This role isn't a fit if you need guaranteed full-time hours from day one, prefer a high-volume production-focused environment, or are still building core chairside confidence." />
+          <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={draft.not_a_fit_if ?? ""} onChange={(e) => set("not_a_fit_if", e.target.value)} placeholder="This role isn't a fit if you need guaranteed full-time hours from day one, prefer a high-volume production-focused environment…" />
         </div>
-
       </div>
     </div>
   );
@@ -423,11 +339,9 @@ function ManualFormPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraft
 // ── Live Preview Panel ────────────────────────────────────────────────────────
 function PreviewPanel({ draft }: { draft: DraftFields }) {
   const isEmpty = !draft.title && !draft.description;
-
   return (
     <div style={{ width: 380, flexShrink: 0, overflowY: "auto", padding: "24px 20px", background: "#f8faf9" }}>
       <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#9ab0ac", marginBottom: 14 }}>Preview</p>
-
       {isEmpty ? (
         <div style={{ border: "1.5px dashed #d4e4e0", borderRadius: 14, padding: "28px 20px", textAlign: "center", color: "#9ab0ac", fontSize: 13.5 }}>
           Your posting preview will appear here as you fill in the details.
@@ -439,61 +353,35 @@ function PreviewPanel({ draft }: { draft: DraftFields }) {
               <span style={{ fontSize: 16 }}>🦷</span>
             </div>
             <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, lineHeight: 1.2, color: "#1a2e29" }}>
-                {draft.title || <span style={{ color: "#9ab0ac" }}>Job title</span>}
-              </h2>
-              {(draft.city || draft.state) && (
-                <p style={{ fontSize: 12.5, color: "#6b7e7a", margin: "2px 0 0" }}>
-                  {[draft.city, draft.state].filter(Boolean).join(", ")}
-                </p>
-              )}
+              <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, lineHeight: 1.2, color: "#1a2e29" }}>{draft.title || <span style={{ color: "#9ab0ac" }}>Job title</span>}</h2>
+              {(draft.city || draft.state) && <p style={{ fontSize: 12.5, color: "#6b7e7a", margin: "2px 0 0" }}>{[draft.city, draft.state].filter(Boolean).join(", ")}</p>}
             </div>
           </div>
-
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
             <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: "#e8f4f1", color: "#2D705F", border: "1px solid #b8d9d0" }}>✦ On Hdenta</span>
-            {draft.employment_type && (
-              <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, background: "#f4f7f6", color: "#6b7e7a", border: "1px solid #e2e8e6" }}>
-                {EMPLOYMENT_TYPE_LABELS[draft.employment_type] ?? draft.employment_type}
-              </span>
-            )}
-            {(draft.pay_min || draft.pay_max) && (
-              <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f4f7f6", color: "#2D705F", border: "1px solid #e2e8e6" }}>
-                {draft.pay_min && draft.pay_max ? `$${draft.pay_min}–$${draft.pay_max}` : `$${draft.pay_min ?? draft.pay_max}`}/{draft.pay_unit === "year" ? "yr" : "hr"}
-              </span>
-            )}
+            {draft.employment_type && <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, background: "#f4f7f6", color: "#6b7e7a", border: "1px solid #e2e8e6" }}>{EMPLOYMENT_TYPE_LABELS[draft.employment_type] ?? draft.employment_type}</span>}
+            {(draft.pay_min || draft.pay_max) && <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f4f7f6", color: "#2D705F", border: "1px solid #e2e8e6" }}>{draft.pay_min && draft.pay_max ? `$${draft.pay_min}–$${draft.pay_max}` : `$${draft.pay_min ?? draft.pay_max}`}/{draft.pay_unit === "year" ? "yr" : "hr"}</span>}
           </div>
-
           {draft.description && <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "#1a2e29", marginBottom: 12 }}>{draft.description}</p>}
-
           {(draft.requirements ?? []).length > 0 && (
             <div style={{ marginBottom: 10 }}>
               <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ab0ac", marginBottom: 4 }}>Requirements</p>
-              <ul style={{ paddingLeft: 18, margin: 0 }}>
-                {(draft.requirements ?? []).map((r, i) => <li key={i} style={{ fontSize: 13, marginBottom: 2, color: "#1a2e29" }}>{r}</li>)}
-              </ul>
+              <ul style={{ paddingLeft: 18, margin: 0 }}>{(draft.requirements ?? []).map((r, i) => <li key={i} style={{ fontSize: 13, marginBottom: 2, color: "#1a2e29" }}>{r}</li>)}</ul>
             </div>
           )}
-
           {(draft.benefits ?? []).length > 0 && (
             <div style={{ marginBottom: 10 }}>
               <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ab0ac", marginBottom: 4 }}>Benefits</p>
-              <ul style={{ paddingLeft: 18, margin: 0 }}>
-                {(draft.benefits ?? []).map((b, i) => <li key={i} style={{ fontSize: 13, marginBottom: 2, color: "#1a2e29" }}>{b}</li>)}
-              </ul>
+              <ul style={{ paddingLeft: 18, margin: 0 }}>{(draft.benefits ?? []).map((b, i) => <li key={i} style={{ fontSize: 13, marginBottom: 2, color: "#1a2e29" }}>{b}</li>)}</ul>
             </div>
           )}
-
           {draft.not_a_fit_if && (
             <div style={{ borderLeft: "3px solid #f59e0b", paddingLeft: 10, marginTop: 10 }}>
               <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ab0ac", marginBottom: 3 }}>This role isn't a fit if…</p>
               <p style={{ fontSize: 13, lineHeight: 1.55, color: "#6b7e7a", fontStyle: "italic" }}>{draft.not_a_fit_if}</p>
             </div>
           )}
-
-          <button style={{ width: "100%", marginTop: 14, padding: "10px", borderRadius: 8, background: "#2D705F", color: "#ffffff", fontSize: 13, fontWeight: 700, border: "none", cursor: "default", opacity: 0.7 }}>
-            Apply on Hdenta
-          </button>
+          <button style={{ width: "100%", marginTop: 14, padding: "10px", borderRadius: 8, background: "#2D705F", color: "#ffffff", fontSize: 13, fontWeight: 700, border: "none", cursor: "default", opacity: 0.7 }}>Apply on Hdenta</button>
         </div>
       )}
     </div>
