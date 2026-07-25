@@ -1,15 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Loader2, ArrowLeft, Pencil, Bot } from "lucide-react";
+import { Send, Loader2, ArrowLeft, Pencil, Bot, X, CheckCircle, ExternalLink } from "lucide-react";
 
-// ── Default tab constant ──────────────────────────────────────────────────────
-// "ai" starts in chat mode; "manual" starts in form mode.
-// This is also the default if the owner clicks "Post a Job" fresh.
 const DEFAULT_MODE: "ai" | "manual" = "ai";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 interface DraftFields {
   title?: string;
   employment_type?: string;
@@ -36,23 +32,95 @@ const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
   contract: "Contract",
 };
 
+// ── Subscribe modal ───────────────────────────────────────────────────────────
+function SubscribeModal({ checkoutUrl, onClose }: { checkoutUrl: string; onClose: () => void }) {
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+    >
+      <div style={{ background: "#ffffff", borderRadius: 20, padding: "32px 28px", maxWidth: 420, width: "100%", position: "relative", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+        <button
+          onClick={onClose}
+          style={{ position: "absolute", top: 14, right: 14, width: 28, height: 28, borderRadius: "50%", border: "1px solid #e2e8e6", background: "#f8faf9", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+        >
+          <X size={13} color="#6b7e7a" />
+        </button>
+
+        <div style={{ width: 48, height: 48, borderRadius: 12, background: "#e8f4f1", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+          <span style={{ fontSize: 22 }}>💼</span>
+        </div>
+
+        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: "#1a2e29" }}>
+          One last step — subscribe to post
+        </h2>
+        <p style={{ fontSize: 14, color: "#5a7570", lineHeight: 1.65, marginBottom: 20 }}>
+          Your job posting is ready. Subscribe for $50/month to publish it and start receiving applications.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
+          {["Unlimited job postings", "AI-assisted drafting", "In-platform candidate applications", "Applicant inbox with messaging"].map((f) => (
+            <div key={f} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5, color: "#1a2e29" }}>
+              <CheckCircle size={15} color="#2D705F" style={{ flexShrink: 0 }} />
+              {f}
+            </div>
+          ))}
+        </div>
+
+        <a
+          href={checkoutUrl}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, width: "100%", padding: "13px 0", background: "#2D705F", color: "#ffffff", fontSize: 14, fontWeight: 700, borderRadius: 10, textDecoration: "none", boxSizing: "border-box" as const }}
+        >
+          Subscribe — $50/month <ExternalLink size={13} color="#ffffff" />
+        </a>
+
+        <p style={{ textAlign: "center", fontSize: 12, color: "#8fa8a3", marginTop: 12 }}>
+          Cancel any time · 14-day money-back guarantee
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function NewJobPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"ai" | "manual">(DEFAULT_MODE);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Shared draft state — both modes read/write to the same object so
-  // switching from AI to manual pre-fills the form with whatever the
-  // AI already extracted.
   const [draft, setDraft] = useState<DraftFields>({});
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+  const [checkoutUrl, setCheckoutUrl] = useState<string>("");
+
+  // Fetch the owner's subscription status + their user ID for the
+  // Gumroad checkout URL. Done client-side so this stays a client
+  // component without needing a separate server wrapper.
+  useEffect(() => {
+    fetch("/api/owner/subscription-status")
+      .then((r) => r.json())
+      .then((data) => {
+        setCheckoutUrl(data.checkoutUrl ?? "");
+      })
+      .catch(() => {});
+  }, []);
 
   async function handlePublish(status: "draft" | "active") {
     if (!draft.title?.trim()) {
       setError("Job title is required before publishing.");
       return;
     }
+
+    // For "active" status, check subscription before hitting the API.
+    if (status === "active") {
+      const res = await fetch("/api/owner/subscription-status");
+      const data = await res.json();
+      if (!data.hasJobPostingSubscription) {
+        setCheckoutUrl(data.checkoutUrl ?? "");
+        setShowSubscribeModal(true);
+        return;
+      }
+    }
+
     setSubmitting(true);
     setError(null);
     try {
@@ -63,6 +131,14 @@ export default function NewJobPage() {
       });
       const data = await res.json();
       if (!res.ok) {
+        // If the API also catches a missing subscription (race condition
+        // where status changed between our check and the API call),
+        // show the modal instead of a generic error.
+        if (data.code === "subscription_required") {
+          setCheckoutUrl(data.checkoutUrl ?? checkoutUrl);
+          setShowSubscribeModal(true);
+          return;
+        }
         setError(data.error ?? "Failed to save posting.");
         return;
       }
@@ -76,20 +152,25 @@ export default function NewJobPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: "calc(100vh - 60px)" }}>
+
+      {showSubscribeModal && checkoutUrl && (
+        <SubscribeModal checkoutUrl={checkoutUrl} onClose={() => setShowSubscribeModal(false)} />
+      )}
+
       {/* Top bar */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderBottom: "1px solid var(--line)", background: "var(--bg-raised)", flexWrap: "wrap", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 24px", borderBottom: "1px solid #e2e8e6", background: "#f8faf9", flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => router.push("/owner/jobs")} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink-soft)", background: "none", border: "none", cursor: "pointer" }}>
+          <button onClick={() => router.push("/owner/jobs")} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#6b7e7a", background: "none", border: "none", cursor: "pointer" }}>
             <ArrowLeft size={14} /> Back
           </button>
-          <span style={{ color: "var(--line)", fontSize: 18 }}>|</span>
-          <h1 style={{ fontFamily: "var(--font-serif)", fontSize: 17, fontWeight: 700, margin: 0 }}>New Job Posting</h1>
+          <span style={{ color: "#e2e8e6", fontSize: 18 }}>|</span>
+          <h1 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>New Job Posting</h1>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {mode === "ai" && (
             <button
               onClick={() => setMode("manual")}
-              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "var(--ink-soft)", background: "none", border: "1px solid var(--line)", borderRadius: "var(--radius-control)", padding: "6px 12px", cursor: "pointer" }}
+              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "#6b7e7a", background: "none", border: "1px solid #e2e8e6", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}
             >
               <Pencil size={12} /> Fill it in myself
             </button>
@@ -97,7 +178,7 @@ export default function NewJobPage() {
           {mode === "manual" && (
             <button
               onClick={() => setMode("ai")}
-              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "var(--teal-deep)", background: "var(--teal-tint)", border: "1px solid var(--teal)/20", borderRadius: "var(--radius-control)", padding: "6px 12px", cursor: "pointer" }}
+              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "#2D705F", background: "#e8f4f1", border: "1px solid #b8d9d0", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}
             >
               <Bot size={12} /> Switch to AI chat
             </button>
@@ -105,14 +186,14 @@ export default function NewJobPage() {
           <button
             onClick={() => handlePublish("draft")}
             disabled={submitting}
-            style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-soft)", background: "var(--bg-raised)", border: "1px solid var(--line)", borderRadius: "var(--radius-control)", padding: "8px 16px", cursor: "pointer" }}
+            style={{ fontSize: 13, fontWeight: 600, color: "#6b7e7a", background: "#ffffff", border: "1px solid #e2e8e6", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}
           >
             Save draft
           </button>
           <button
             onClick={() => handlePublish("active")}
             disabled={submitting}
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "#fff", background: "var(--teal)", border: "none", borderRadius: "var(--radius-control)", padding: "8px 18px", cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "#ffffff", background: "#2D705F", border: "none", borderRadius: 8, padding: "8px 18px", cursor: "pointer" }}
           >
             {submitting ? <Loader2 size={13} className="animate-spin" /> : null}
             Publish
@@ -121,7 +202,7 @@ export default function NewJobPage() {
       </div>
 
       {error && (
-        <div style={{ background: "var(--coral-tint, #fff1f0)", borderBottom: "1px solid var(--coral)", color: "var(--coral-deep)", fontSize: 13.5, padding: "10px 24px" }}>
+        <div style={{ background: "#fff1f0", borderBottom: "1px solid #ffb3ae", color: "#c0392b", fontSize: 13.5, padding: "10px 24px" }}>
           {error}
         </div>
       )}
@@ -151,18 +232,10 @@ function AIChatPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraftUpda
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Kick off the AI conversation on mount.
-  useEffect(() => {
-    if (started) return;
-    setStarted(true);
-    sendToAI([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function sendToAI(history: ChatMessage[], userMessage?: string) {
+  const sendToAI = useCallback(async (history: ChatMessage[], userMessage?: string) => {
     setLoading(true);
     const newHistory: ChatMessage[] = userMessage
-      ? [...history, { role: "user", content: userMessage }]
+      ? [...history, { role: "user" as const, content: userMessage }]
       : history;
 
     try {
@@ -185,12 +258,18 @@ function AIChatPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraftUpda
     } catch {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "I'm having a bit of trouble right now. You can switch to the manual form above, or try again." },
+        { role: "assistant" as const, content: "I'm having a bit of trouble right now. You can switch to the manual form above, or try again." },
       ]);
     } finally {
       setLoading(false);
     }
-  }
+  }, [draft, onDraftUpdate]);
+
+  useEffect(() => {
+    if (started) return;
+    setStarted(true);
+    sendToAI([]);
+  }, [started, sendToAI]);
 
   async function handleSend() {
     const text = input.trim();
@@ -200,50 +279,50 @@ function AIChatPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraftUpda
   }
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRight: "1px solid var(--line)", overflow: "hidden" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRight: "1px solid #e2e8e6", overflow: "hidden" }}>
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 8px" }}>
         {messages.map((m, i) => (
           <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 12 }}>
             {m.role === "assistant" && (
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--teal-tint)", border: "1px solid var(--teal)/20", display: "flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0, alignSelf: "flex-end" }}>
-                <Bot size={13} color="var(--teal-deep)" />
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#e8f4f1", border: "1px solid #b8d9d0", display: "flex", alignItems: "center", justifyContent: "center", marginRight: 8, flexShrink: 0, alignSelf: "flex-end" }}>
+                <Bot size={13} color="#2D705F" />
               </div>
             )}
             <div style={{
               maxWidth: "78%",
               padding: "10px 14px",
               borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-              background: m.role === "user" ? "var(--teal)" : "var(--bg-raised)",
-              color: m.role === "user" ? "#fff" : "var(--ink)",
-              border: m.role === "assistant" ? "1px solid var(--line)" : "none",
+              background: m.role === "user" ? "#2D705F" : "#ffffff",
+              color: m.role === "user" ? "#ffffff" : "#1a2e29",
+              border: m.role === "assistant" ? "1px solid #e2e8e6" : "none",
               fontSize: 13.5,
               lineHeight: 1.55,
-              whiteSpace: "pre-wrap",
+              whiteSpace: "pre-wrap" as const,
             }}>
               {m.content}
             </div>
           </div>
         ))}
         {loading && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--ink-faint)", fontSize: 13 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9ab0ac", fontSize: 13 }}>
             <Loader2 size={13} className="animate-spin" /> Thinking…
           </div>
         )}
         <div ref={bottomRef} />
       </div>
-      <div style={{ padding: "12px 16px", borderTop: "1px solid var(--line)", display: "flex", gap: 8 }}>
+      <div style={{ padding: "12px 16px", borderTop: "1px solid #e2e8e6", display: "flex", gap: 8 }}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
           placeholder="Type your answer…"
           disabled={loading}
-          style={{ flex: 1, height: 40, padding: "0 14px", borderRadius: "var(--radius-control)", border: "1px solid var(--line)", fontSize: 13.5, background: "var(--bg-raised)" }}
+          style={{ flex: 1, height: 40, padding: "0 14px", borderRadius: 8, border: "1px solid #e2e8e6", fontSize: 13.5, background: "#ffffff" }}
         />
         <button
           onClick={handleSend}
           disabled={loading || !input.trim()}
-          style={{ width: 40, height: 40, borderRadius: "var(--radius-control)", background: "var(--teal)", color: "#fff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
+          style={{ width: 40, height: 40, borderRadius: 8, background: "#2D705F", color: "#ffffff", border: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
         >
           <Send size={15} />
         </button>
@@ -259,17 +338,17 @@ function ManualFormPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraft
   }
 
   function handleListField(field: "requirements" | "benefits", value: string) {
-    // Textarea where each line = one list item.
     const items = value.split("\n").map((l) => l.trim()).filter(Boolean);
     set(field, items);
   }
 
-  const inputStyle = { width: "100%", padding: "9px 12px", borderRadius: "var(--radius-control)", border: "1px solid var(--line)", fontSize: 13.5, background: "var(--bg-raised)", boxSizing: "border-box" as const };
-  const labelStyle = { fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" as const, color: "var(--ink-faint)", display: "block", marginBottom: 5 };
+  const inputStyle: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e2e8e6", fontSize: 13.5, background: "#ffffff", boxSizing: "border-box" };
+  const labelStyle: React.CSSProperties = { fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#8fa8a3", display: "block", marginBottom: 5 };
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", borderRight: "1px solid var(--line)", padding: "24px 24px 40px" }}>
+    <div style={{ flex: 1, overflowY: "auto", borderRight: "1px solid #e2e8e6", padding: "24px 24px 40px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 500 }}>
+
         <div>
           <label style={labelStyle}>Job Title *</label>
           <input style={inputStyle} value={draft.title ?? ""} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Dental Hygienist – Part-Time" />
@@ -332,9 +411,10 @@ function ManualFormPanel({ draft, onDraftUpdate }: { draft: DraftFields; onDraft
 
         <div>
           <label style={labelStyle}>This role isn't a fit if…</label>
-          <p style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 6, lineHeight: 1.5 }}>Be honest — this saves everyone time. Candidates respect upfront clarity.</p>
+          <p style={{ fontSize: 12, color: "#8fa8a3", marginBottom: 6, lineHeight: 1.5 }}>Be honest — this saves everyone time.</p>
           <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={draft.not_a_fit_if ?? ""} onChange={(e) => set("not_a_fit_if", e.target.value)} placeholder="This role isn't a fit if you need guaranteed full-time hours from day one, prefer a high-volume production-focused environment, or are still building core chairside confidence." />
         </div>
+
       </div>
     </div>
   );
@@ -345,80 +425,73 @@ function PreviewPanel({ draft }: { draft: DraftFields }) {
   const isEmpty = !draft.title && !draft.description;
 
   return (
-    <div style={{ width: 380, flexShrink: 0, overflowY: "auto", padding: "24px 20px", background: "var(--bg)" }}>
-      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-faint)", marginBottom: 14 }}>Preview</p>
+    <div style={{ width: 380, flexShrink: 0, overflowY: "auto", padding: "24px 20px", background: "#f8faf9" }}>
+      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#9ab0ac", marginBottom: 14 }}>Preview</p>
 
       {isEmpty ? (
-        <div style={{ border: "1.5px dashed var(--line)", borderRadius: 14, padding: "28px 20px", textAlign: "center", color: "var(--ink-faint)", fontSize: 13.5 }}>
+        <div style={{ border: "1.5px dashed #d4e4e0", borderRadius: 14, padding: "28px 20px", textAlign: "center", color: "#9ab0ac", fontSize: 13.5 }}>
           Your posting preview will appear here as you fill in the details.
         </div>
       ) : (
-        <div style={{ border: "1.5px solid var(--teal)/30", borderRadius: 16, padding: "20px", background: "#fff", boxShadow: "0 0 0 3px rgba(45,112,95,0.06)" }}>
-          {/* Header */}
+        <div style={{ border: "1.5px solid #b8d9d0", borderRadius: 16, padding: "20px", background: "#ffffff", boxShadow: "0 0 0 3px rgba(45,112,95,0.06)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--teal-tint)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#e8f4f1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <span style={{ fontSize: 16 }}>🦷</span>
             </div>
             <div>
-              <h2 style={{ fontFamily: "var(--font-serif)", fontSize: 16, fontWeight: 700, margin: 0, lineHeight: 1.2 }}>
-                {draft.title || <span style={{ color: "var(--ink-faint)" }}>Job title</span>}
+              <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, lineHeight: 1.2, color: "#1a2e29" }}>
+                {draft.title || <span style={{ color: "#9ab0ac" }}>Job title</span>}
               </h2>
               {(draft.city || draft.state) && (
-                <p style={{ fontSize: 12.5, color: "var(--ink-soft)", margin: "2px 0 0" }}>
+                <p style={{ fontSize: 12.5, color: "#6b7e7a", margin: "2px 0 0" }}>
                   {[draft.city, draft.state].filter(Boolean).join(", ")}
                 </p>
               )}
             </div>
           </div>
 
-          {/* Tags */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-            <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: "var(--teal)/10", color: "var(--teal)", border: "1px solid var(--teal)/20" }}>✦ On Hdenta</span>
+            <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: "#e8f4f1", color: "#2D705F", border: "1px solid #b8d9d0" }}>✦ On Hdenta</span>
             {draft.employment_type && (
-              <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, background: "var(--bg-raised)", color: "var(--ink-soft)", border: "1px solid var(--line)" }}>
+              <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, background: "#f4f7f6", color: "#6b7e7a", border: "1px solid #e2e8e6" }}>
                 {EMPLOYMENT_TYPE_LABELS[draft.employment_type] ?? draft.employment_type}
               </span>
             )}
             {(draft.pay_min || draft.pay_max) && (
-              <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "var(--bg-raised)", color: "var(--teal-deep)", border: "1px solid var(--line)" }}>
-                {draft.pay_min && draft.pay_max
-                  ? `$${draft.pay_min}–$${draft.pay_max}`
-                  : `$${draft.pay_min ?? draft.pay_max}`}
-                /{draft.pay_unit === "year" ? "yr" : "hr"}
+              <span style={{ padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f4f7f6", color: "#2D705F", border: "1px solid #e2e8e6" }}>
+                {draft.pay_min && draft.pay_max ? `$${draft.pay_min}–$${draft.pay_max}` : `$${draft.pay_min ?? draft.pay_max}`}/{draft.pay_unit === "year" ? "yr" : "hr"}
               </span>
             )}
           </div>
 
-          {draft.description && (
-            <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--ink)", marginBottom: 12 }}>{draft.description}</p>
-          )}
+          {draft.description && <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "#1a2e29", marginBottom: 12 }}>{draft.description}</p>}
 
           {(draft.requirements ?? []).length > 0 && (
             <div style={{ marginBottom: 10 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-faint)", marginBottom: 4 }}>Requirements</p>
+              <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ab0ac", marginBottom: 4 }}>Requirements</p>
               <ul style={{ paddingLeft: 18, margin: 0 }}>
-                {(draft.requirements ?? []).map((r, i) => <li key={i} style={{ fontSize: 13, marginBottom: 2 }}>{r}</li>)}
+                {(draft.requirements ?? []).map((r, i) => <li key={i} style={{ fontSize: 13, marginBottom: 2, color: "#1a2e29" }}>{r}</li>)}
               </ul>
             </div>
           )}
 
           {(draft.benefits ?? []).length > 0 && (
             <div style={{ marginBottom: 10 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-faint)", marginBottom: 4 }}>Benefits</p>
+              <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ab0ac", marginBottom: 4 }}>Benefits</p>
               <ul style={{ paddingLeft: 18, margin: 0 }}>
-                {(draft.benefits ?? []).map((b, i) => <li key={i} style={{ fontSize: 13, marginBottom: 2 }}>{b}</li>)}
+                {(draft.benefits ?? []).map((b, i) => <li key={i} style={{ fontSize: 13, marginBottom: 2, color: "#1a2e29" }}>{b}</li>)}
               </ul>
             </div>
           )}
 
           {draft.not_a_fit_if && (
-            <div style={{ borderLeft: "3px solid var(--amber, #f59e0b)", paddingLeft: 10, marginTop: 10 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--ink-faint)", marginBottom: 3 }}>This role isn't a fit if…</p>
-              <p style={{ fontSize: 13, lineHeight: 1.55, color: "var(--ink-soft)", fontStyle: "italic" }}>{draft.not_a_fit_if}</p>
+            <div style={{ borderLeft: "3px solid #f59e0b", paddingLeft: 10, marginTop: 10 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#9ab0ac", marginBottom: 3 }}>This role isn't a fit if…</p>
+              <p style={{ fontSize: 13, lineHeight: 1.55, color: "#6b7e7a", fontStyle: "italic" }}>{draft.not_a_fit_if}</p>
             </div>
           )}
 
-          <button style={{ width: "100%", marginTop: 14, padding: "10px", borderRadius: "var(--radius-control)", background: "var(--teal)", color: "#fff", fontSize: 13, fontWeight: 700, border: "none", cursor: "default", opacity: 0.7 }}>
+          <button style={{ width: "100%", marginTop: 14, padding: "10px", borderRadius: 8, background: "#2D705F", color: "#ffffff", fontSize: 13, fontWeight: 700, border: "none", cursor: "default", opacity: 0.7 }}>
             Apply on Hdenta
           </button>
         </div>
