@@ -1,5 +1,5 @@
 # Hdenta
-
+ 
 > Hire for fit, not just credentials.
 
 Two-sided marketplace connecting independent dental practices with dental staff (hygienists, dental assistants, office/practice managers, front desk, treatment coordinators, billing coordinators, lab techs, sales reps) — differentiated by qualitative fit data (compensation expectations, dealbreakers, goals, scenario-based answers) rather than resumes alone.
